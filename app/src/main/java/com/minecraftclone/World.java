@@ -2,6 +2,8 @@ package com.minecraftclone;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Collections;
+import java.util.Set;
 
 /**
  * Represents the game world as a set of chunks.
@@ -14,6 +16,13 @@ public class World {
      */
     public Chunk getChunk(int cx, int cy, int cz) {
         return chunks.computeIfAbsent(new ChunkPos(cx, cy, cz), pos -> new Chunk());
+    }
+
+    /**
+     * Returns the set of positions for currently loaded chunks.
+     */
+    public Set<ChunkPos> getChunkPositions() {
+        return Collections.unmodifiableSet(chunks.keySet());
     }
 
     /**

@@ -32,9 +32,8 @@ public class App {
         int centerChunk = 16 / 2;
         int spawnX = centerChunk * Chunk.SIZE + Chunk.SIZE / 2;
         int spawnZ = centerChunk * Chunk.SIZE + Chunk.SIZE / 2;
-        int surface = generator.findSurfaceY(world, spawnX, spawnZ);
-        int spawnY = surface >= 0 ? surface + 1 : Chunk.SIZE;
-        Player player = new Player(spawnX, spawnY, spawnZ);
+        int surfaceY = generator.findSurfaceY(world, spawnX, spawnZ);
+        Player player = new Player(spawnX, surfaceY + 1, spawnZ);
         System.out.println("Player starting at " + player);
 
         // Launch the LWJGL-based renderer.
