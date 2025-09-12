@@ -45,10 +45,12 @@ public class ChunkGenerator {
     }
 
     /**
-     * Generates or fills the chunk at the given coordinates.
+     * Generates or fills the provided chunk at the given coordinates.
+     * The chunk is expected to be newly created and not yet present in the
+     * world's chunk map so generation can occur off the main thread without
+     * exposing a partially built chunk.
      */
-    public Chunk generate(World world, int cx, int cy, int cz) {
-        Chunk chunk = world.getChunk(cx, cy, cz);
+    public Chunk generate(World world, int cx, int cy, int cz, Chunk chunk) {
         for (int x = 0; x < Chunk.SIZE; x++) {
             for (int y = 0; y < Chunk.SIZE; y++) {
                 for (int z = 0; z < Chunk.SIZE; z++) {

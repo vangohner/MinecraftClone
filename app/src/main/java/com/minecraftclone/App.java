@@ -37,5 +37,6 @@ public class App {
         // Launch the LWJGL-based renderer.
         WorldRenderer renderer = new WorldRenderer(world, player);
         renderer.run();
+        world.shutdown();
     }
 }

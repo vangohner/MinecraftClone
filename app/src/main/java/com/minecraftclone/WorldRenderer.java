@@ -120,7 +120,11 @@ public class WorldRenderer {
                             baseX + Chunk.SIZE, baseY + Chunk.SIZE, baseZ + Chunk.SIZE)) {
                         continue;
                     }
-                    Chunk chunk = world.getChunk(cx, cy, cz);
+                    world.requestChunk(cx, cy, cz);
+                    Chunk chunk = world.getChunkIfLoaded(cx, cy, cz);
+                    if (chunk == null) {
+                        continue;
+                    }
                     if (chunk.isDirty() || chunk.getMesh() == null) {
                         ChunkMesh old = chunk.getMesh();
                         if (old != null) {
