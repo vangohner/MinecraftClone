@@ -19,13 +19,14 @@ public class App {
 
         World world = new World();
 
-        // Generate a single chunk using noise-based terrain heights.
+        // Generate a single chunk using 3D noise terrain.
         ChunkGenerator generator = new ChunkGenerator(seed);
-        generator.generate(world, 0, 0);
+        generator.generate(world, 0, 0, 0);
 
         int spawnX = Chunk.SIZE / 2;
         int spawnZ = Chunk.SIZE / 2;
-        int spawnY = generator.sampleHeight(spawnX, spawnZ) + 1;
+        int surface = generator.findSurfaceY(world, spawnX, spawnZ);
+        int spawnY = surface >= 0 ? surface + 1 : Chunk.SIZE;
         Player player = new Player(spawnX, spawnY, spawnZ);
         System.out.println("Player starting at " + player);
 
