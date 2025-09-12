@@ -1,5 +1,8 @@
 package com.minecraftclone;
 
+import javax.swing.JFrame;
+import javax.swing.SwingUtilities;
+
 /**
  * Entry point of the toy Minecraft clone.
  */
@@ -21,13 +24,14 @@ public class App {
         Player player = new Player(8, 1, 8);
         System.out.println("Player starting at " + player);
 
-        // Print a top-down view of the ground layer.
-        for (int z = 0; z < Chunk.SIZE; z++) {
-            StringBuilder row = new StringBuilder();
-            for (int x = 0; x < Chunk.SIZE; x++) {
-                row.append(world.getBlock(x, 0, z).getDisplay());
-            }
-            System.out.println(row);
-        }
+        // Launch a window to render the world.
+        SwingUtilities.invokeLater(() -> {
+            JFrame frame = new JFrame("Minecraft Clone");
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frame.add(new WorldRenderer(world));
+            frame.pack();
+            frame.setLocationRelativeTo(null);
+            frame.setVisible(true);
+        });
     }
 }
