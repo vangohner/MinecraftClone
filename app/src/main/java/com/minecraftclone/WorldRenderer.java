@@ -76,6 +76,10 @@ public class WorldRenderer {
     private void loop() {
         while (!glfwWindowShouldClose(window)) {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            // Handle continuous movement input each frame.
+            handleMovement();
+
             glLoadIdentity();
             glRotatef((float) Math.toDegrees(-player.getPitch()), 1f, 0f, 0f);
             glRotatef((float) Math.toDegrees(-player.getYaw()), 0f, 1f, 0f);
@@ -182,14 +186,40 @@ public class WorldRenderer {
             case GLFW_KEY_RIGHT -> player.rotate(0.1);
             case GLFW_KEY_UP -> player.pitch(-0.05);
             case GLFW_KEY_DOWN -> player.pitch(0.05);
-
-            case GLFW_KEY_W -> moveRelative(0, 1);
-            case GLFW_KEY_S -> moveRelative(0, -1);
-            case GLFW_KEY_A -> moveRelative(-1, 0);
-            case GLFW_KEY_D -> moveRelative(1, 0);
-            case GLFW_KEY_SPACE -> moveVertical(1);
-            case GLFW_KEY_LEFT_SHIFT -> moveVertical(-1);
+            case GLFW_KEY_ESCAPE -> glfwSetWindowShouldClose(window, true);
             default -> {}
+        }
+    }
+
+    private void handleMovement() {
+        double forward = 0;
+        double right = 0;
+        double up = 0;
+
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+            forward += 1;
+        }
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+            forward -= 1;
+        }
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+            right += 1;
+        }
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+            right -= 1;
+        }
+        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+            up += 1;
+        }
+        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+            up -= 1;
+        }
+
+        if (forward != 0 || right != 0) {
+            moveRelative(right, forward);
+        }
+        if (up != 0) {
+            moveVertical(up);
         }
     }
 
