@@ -65,7 +65,8 @@ public class WorldRenderer {
         while (!glfwWindowShouldClose(window)) {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             glLoadIdentity();
-            glRotatef((float) Math.toDegrees(player.getYaw()), 0f, 1f, 0f);
+            glRotatef((float) Math.toDegrees(-player.getPitch()), 1f, 0f, 0f);
+            glRotatef((float) Math.toDegrees(-player.getYaw()), 0f, 1f, 0f);
             glTranslatef((float) -player.getX(), (float) -player.getY(), (float) -player.getZ());
 
             renderBlocks();
@@ -145,10 +146,12 @@ public class WorldRenderer {
             return;
         }
         switch (key) {
-            case GLFW_KEY_LEFT -> player.rotate(-0.1);
-            case GLFW_KEY_RIGHT -> player.rotate(0.1);
-            case GLFW_KEY_W, GLFW_KEY_UP -> moveRelative(0, 1);
-            case GLFW_KEY_S, GLFW_KEY_DOWN -> moveRelative(0, -1);
+            case GLFW_KEY_LEFT -> player.rotateYaw(0.1);
+            case GLFW_KEY_RIGHT -> player.rotateYaw(-0.1);
+            case GLFW_KEY_UP -> player.rotatePitch(-0.1);
+            case GLFW_KEY_DOWN -> player.rotatePitch(0.1);
+            case GLFW_KEY_W -> moveRelative(0, 1);
+            case GLFW_KEY_S -> moveRelative(0, -1);
             case GLFW_KEY_A -> moveRelative(-1, 0);
             case GLFW_KEY_D -> moveRelative(1, 0);
             default -> {}
@@ -158,7 +161,7 @@ public class WorldRenderer {
     private void moveRelative(double right, double forward) {
         double yaw = player.getYaw();
         double dx = forward * Math.sin(yaw) + right * Math.cos(yaw);
-        double dz = forward * Math.cos(yaw) - right * Math.sin(yaw);
+        double dz = -forward * Math.cos(yaw) + right * Math.sin(yaw);
         double newX = player.getX() + dx;
         double newZ = player.getZ() + dz;
         if (newX >= 0 && newX < Chunk.SIZE && newZ >= 0 && newZ < Chunk.SIZE) {

@@ -8,15 +8,20 @@ public class Player {
     private double y;
     private double z;
     /**
-     * Player yaw in radians. 0 means looking toward positive Z.
+     * Player yaw in radians. 0 means looking toward negative Z (forward).
      */
     private double yaw;
+    /**
+     * Player pitch in radians. Positive looks downward.
+     */
+    private double pitch;
 
     public Player(double x, double y, double z) {
         this.x = x;
         this.y = y;
         this.z = z;
         this.yaw = 0;
+        this.pitch = 0;
     }
 
     public void move(double dx, double dy, double dz) {
@@ -41,8 +46,20 @@ public class Player {
         return yaw;
     }
 
-    public void rotate(double dyaw) {
+    public double getPitch() {
+        return pitch;
+    }
+
+    public void rotateYaw(double dyaw) {
         this.yaw += dyaw;
+    }
+
+    public void rotatePitch(double dpitch) {
+        this.pitch += dpitch;
+        // clamp to avoid flipping
+        double limit = Math.PI / 2 - 0.01;
+        if (this.pitch > limit) this.pitch = limit;
+        if (this.pitch < -limit) this.pitch = -limit;
     }
 
     @Override
