@@ -1,144 +1,177 @@
 package com.minecraftclone;
 
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.Polygon;
-import java.awt.event.KeyEvent;
-import java.awt.event.KeyListener;
+import static org.lwjgl.glfw.GLFW.*;
+import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.system.MemoryUtil.NULL;
 
-import javax.swing.JPanel;
+import org.lwjgl.glfw.Callbacks;
+import org.lwjgl.glfw.GLFWErrorCallback;
+import org.lwjgl.opengl.GL;
 
 /**
- * Very simple isometric renderer that draws blocks in a Swing window.
- * This is not a full 3D engine but provides a basic 3D-like view using
- * isometric projection so the world can be visualised outside of the
- * console.
+ * Simple renderer backed by LWJGL and OpenGL providing a rudimentary 3D engine
+ * with depth buffering and perspective projection. This replaces the previous
+ * Java2D based renderer.
  */
-public class WorldRenderer extends JPanel implements KeyListener {
-    private static final int TILE_WIDTH = 40;
-    private static final int TILE_HEIGHT = 20;
+public class WorldRenderer {
+    private static final int WIDTH = 800;
+    private static final int HEIGHT = 600;
 
     private final World world;
     private final Player player;
+    private long window;
 
     public WorldRenderer(World world, Player player) {
         this.world = world;
         this.player = player;
-        setPreferredSize(new Dimension(800, 600));
-        setBackground(Color.CYAN.darker());
-        setFocusable(true);
-        addKeyListener(this);
     }
 
-    @Override
-    protected void paintComponent(Graphics g) {
-        super.paintComponent(g);
-        Graphics2D g2d = (Graphics2D) g;
+    /** Launches the rendering loop. */
+    public void run() {
+        init();
+        loop();
+        Callbacks.glfwFreeCallbacks(window);
+        glfwDestroyWindow(window);
+        glfwTerminate();
+    }
 
-        int offsetX = getWidth() / 2;
-        int offsetY = getHeight() / 2;
+    private void init() {
+        GLFWErrorCallback.createPrint(System.err).set();
+        if (!glfwInit()) {
+            throw new IllegalStateException("Unable to initialize GLFW");
+        }
 
-        double px = player.getX();
-        double py = player.getY();
-        double pz = player.getZ();
+        window = glfwCreateWindow(WIDTH, HEIGHT, "Minecraft Clone", NULL, NULL);
+        if (window == NULL) {
+            throw new RuntimeException("Failed to create GLFW window");
+        }
 
+        glfwMakeContextCurrent(window);
+        glfwSwapInterval(1);
+        glfwSetKeyCallback(window, this::handleKey);
+        GL.createCapabilities();
+
+        glEnable(GL_DEPTH_TEST);
+        glClearColor(0.53f, 0.81f, 1f, 0f);
+
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        float aspect = (float) WIDTH / HEIGHT;
+        setPerspective(70f, aspect, 0.1f, 100f);
+        glMatrixMode(GL_MODELVIEW);
+    }
+
+    private void loop() {
+        while (!glfwWindowShouldClose(window)) {
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glLoadIdentity();
+            glRotatef((float) Math.toDegrees(-player.getPitch()), 1f, 0f, 0f);
+            glRotatef((float) Math.toDegrees(-player.getYaw()), 0f, 1f, 0f);
+            glTranslatef((float) -player.getX(), (float) -player.getY(), (float) -player.getZ());
+
+            renderBlocks();
+
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+        }
+    }
+
+    private void renderBlocks() {
         Chunk chunk = world.getChunk(0, 0, 0);
         for (int y = 0; y < Chunk.SIZE; y++) {
             for (int x = 0; x < Chunk.SIZE; x++) {
                 for (int z = 0; z < Chunk.SIZE; z++) {
                     BlockType type = chunk.getBlock(x, y, z);
                     if (type != BlockType.AIR) {
-                        drawBlock(g2d, type, x, y, z, px, py, pz, offsetX, offsetY);
+                        drawCube(x, y, z, type);
                     }
                 }
             }
         }
     }
 
-    private void drawBlock(Graphics2D g2d, BlockType type, int x, int y, int z,
-            double px, double py, double pz, int offsetX, int offsetY) {
-        double relX = x - px;
-        double relY = y - py;
-        double relZ = z - pz;
-
-        int sx = (int) ((relX - relZ) * TILE_WIDTH / 2) + offsetX;
-        int sy = (int) ((relX + relZ) * TILE_HEIGHT / 2 - relY * TILE_HEIGHT) + offsetY;
-
-        // Top face
-        Polygon top = new Polygon();
-        top.addPoint(sx, sy);
-        top.addPoint(sx + TILE_WIDTH / 2, sy + TILE_HEIGHT / 2);
-        top.addPoint(sx, sy + TILE_HEIGHT);
-        top.addPoint(sx - TILE_WIDTH / 2, sy + TILE_HEIGHT / 2);
-        g2d.setColor(colorFor(type));
-        g2d.fillPolygon(top);
-        g2d.setColor(Color.DARK_GRAY);
-        g2d.drawPolygon(top);
-
-        // Left face
-        Polygon left = new Polygon();
-        left.addPoint(sx - TILE_WIDTH / 2, sy + TILE_HEIGHT / 2);
-        left.addPoint(sx, sy + TILE_HEIGHT);
-        left.addPoint(sx, sy + TILE_HEIGHT * 2);
-        left.addPoint(sx - TILE_WIDTH / 2, sy + TILE_HEIGHT + TILE_HEIGHT / 2);
-        g2d.setColor(colorFor(type).darker());
-        g2d.fillPolygon(left);
-        g2d.setColor(Color.DARK_GRAY);
-        g2d.drawPolygon(left);
-
-        // Right face
-        Polygon right = new Polygon();
-        right.addPoint(sx + TILE_WIDTH / 2, sy + TILE_HEIGHT / 2);
-        right.addPoint(sx, sy + TILE_HEIGHT);
-        right.addPoint(sx, sy + TILE_HEIGHT * 2);
-        right.addPoint(sx + TILE_WIDTH / 2, sy + TILE_HEIGHT + TILE_HEIGHT / 2);
-        g2d.setColor(colorFor(type).darker().darker());
-        g2d.fillPolygon(right);
-        g2d.setColor(Color.DARK_GRAY);
-        g2d.drawPolygon(right);
+    private void drawCube(int x, int y, int z, BlockType type) {
+        float[] base = colorFor(type);
+        glBegin(GL_QUADS);
+        // front
+        glColor3f(base[0] * 0.9f, base[1] * 0.9f, base[2] * 0.9f);
+        glVertex3f(x, y, z + 1);
+        glVertex3f(x + 1, y, z + 1);
+        glVertex3f(x + 1, y + 1, z + 1);
+        glVertex3f(x, y + 1, z + 1);
+        // back
+        glColor3f(base[0] * 0.8f, base[1] * 0.8f, base[2] * 0.8f);
+        glVertex3f(x + 1, y, z);
+        glVertex3f(x, y, z);
+        glVertex3f(x, y + 1, z);
+        glVertex3f(x + 1, y + 1, z);
+        // left
+        glColor3f(base[0] * 0.7f, base[1] * 0.7f, base[2] * 0.7f);
+        glVertex3f(x, y, z);
+        glVertex3f(x, y, z + 1);
+        glVertex3f(x, y + 1, z + 1);
+        glVertex3f(x, y + 1, z);
+        // right
+        glColor3f(base[0] * 0.7f, base[1] * 0.7f, base[2] * 0.7f);
+        glVertex3f(x + 1, y, z + 1);
+        glVertex3f(x + 1, y, z);
+        glVertex3f(x + 1, y + 1, z);
+        glVertex3f(x + 1, y + 1, z + 1);
+        // top
+        glColor3f(base[0], base[1], base[2]);
+        glVertex3f(x, y + 1, z + 1);
+        glVertex3f(x + 1, y + 1, z + 1);
+        glVertex3f(x + 1, y + 1, z);
+        glVertex3f(x, y + 1, z);
+        // bottom
+        glColor3f(base[0] * 0.5f, base[1] * 0.5f, base[2] * 0.5f);
+        glVertex3f(x, y, z);
+        glVertex3f(x + 1, y, z);
+        glVertex3f(x + 1, y, z + 1);
+        glVertex3f(x, y, z + 1);
+        glEnd();
     }
 
-    private Color colorFor(BlockType type) {
+    private float[] colorFor(BlockType type) {
         return switch (type) {
-            case GRASS -> new Color(0x3CB043);
-            case DIRT -> new Color(0x8B4513);
-            case STONE -> Color.GRAY;
-            default -> Color.WHITE;
+            case GRASS -> new float[] {0.235f, 0.69f, 0.26f};
+            case DIRT -> new float[] {0.545f, 0.27f, 0.075f};
+            case STONE -> new float[] {0.5f, 0.5f, 0.5f};
+            default -> new float[] {1f, 1f, 1f};
         };
     }
 
-    @Override
-    public void keyPressed(KeyEvent e) {
-        double dx = 0;
-        double dz = 0;
-        switch (e.getKeyCode()) {
-            case KeyEvent.VK_W, KeyEvent.VK_UP -> dz = -1;
-            case KeyEvent.VK_S, KeyEvent.VK_DOWN -> dz = 1;
-            case KeyEvent.VK_A, KeyEvent.VK_LEFT -> dx = -1;
-            case KeyEvent.VK_D, KeyEvent.VK_RIGHT -> dx = 1;
-            default -> {
-                return;
-            }
+    private void handleKey(long window, int key, int scancode, int action, int mods) {
+        if (action != GLFW_PRESS && action != GLFW_REPEAT) {
+            return;
         }
+        switch (key) {
+            case GLFW_KEY_LEFT -> player.rotate(-0.1);
+            case GLFW_KEY_RIGHT -> player.rotate(0.1);
+            case GLFW_KEY_UP -> player.pitch(-0.05);
+            case GLFW_KEY_DOWN -> player.pitch(0.05);
+            case GLFW_KEY_W -> moveRelative(0, 1);
+            case GLFW_KEY_S -> moveRelative(0, -1);
+            case GLFW_KEY_A -> moveRelative(-1, 0);
+            case GLFW_KEY_D -> moveRelative(1, 0);
+            default -> {}
+        }
+    }
 
+    private void moveRelative(double right, double forward) {
+        double yaw = player.getYaw();
+        double dx = forward * Math.sin(yaw) + right * Math.cos(yaw);
+        double dz = forward * Math.cos(yaw) - right * Math.sin(yaw);
         double newX = player.getX() + dx;
         double newZ = player.getZ() + dz;
         if (newX >= 0 && newX < Chunk.SIZE && newZ >= 0 && newZ < Chunk.SIZE) {
             player.move(dx, 0, dz);
-            repaint();
         }
     }
 
-    @Override
-    public void keyReleased(KeyEvent e) {
-        // no-op
-    }
-
-    @Override
-    public void keyTyped(KeyEvent e) {
-        // no-op
+    private void setPerspective(float fov, float aspect, float near, float far) {
+        double y = near * Math.tan(Math.toRadians(fov) / 2.0);
+        double x = y * aspect;
+        glFrustum(-x, x, -y, y, near, far);
     }
 }
-
