@@ -5,23 +5,43 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Generates chunk terrain using 3D noise.
+ * Generates chunk terrain using layered 3D noise. The generator creates a
+ * 2D height map for broad terrain features (mountains, valleys, etc.) and then
+ * applies an additional 3D noise field to add cliffs, overhangs, floating
+ * islands and other irregularities. A separate noise field carves out caves.
  */
 public class ChunkGenerator {
-    private final NoiseGenerator noise;
-    private final double frequency;
-    private final double amplitude;
+    private final NoiseGenerator heightNoise;
+    private final NoiseGenerator detailNoise;
+    private final NoiseGenerator caveNoise;
+
+    private final double baseFrequency;
+    private final double baseAmplitude;
     private final int baseHeight;
 
+    // Tuning parameters for secondary noise fields.
+    private final double detailFrequency;
+    private final double detailAmplitude;
+    private final double caveFrequency = 0.08;
+    private final double caveThreshold = 0.65;
+
     public ChunkGenerator(long seed) {
-        this(seed, 0.1, Chunk.SIZE / 4.0, Chunk.SIZE / 2);
+        // Default values tuned for varied terrain across large vertical ranges.
+        this(seed, 0.003, Chunk.SIZE * 4.0, 0);
     }
 
     public ChunkGenerator(long seed, double frequency, double amplitude, int baseHeight) {
-        this.noise = new NoiseGenerator(seed);
-        this.frequency = frequency;
-        this.amplitude = amplitude;
+        this.heightNoise = new NoiseGenerator(seed);
+        this.detailNoise = new NoiseGenerator(seed + 1);
+        this.caveNoise = new NoiseGenerator(seed + 2);
+
+        this.baseFrequency = frequency;
+        this.baseAmplitude = amplitude;
         this.baseHeight = baseHeight;
+
+        // Secondary noise scales relative to the primary height noise.
+        this.detailFrequency = frequency * 4.0;
+        this.detailAmplitude = amplitude / 2.0;
     }
 
     /**
@@ -35,10 +55,22 @@ public class ChunkGenerator {
                     int wx = cx * Chunk.SIZE + x;
                     int wy = cy * Chunk.SIZE + y;
                     int wz = cz * Chunk.SIZE + z;
-                    double n = noise.noise(wx * frequency, wy * frequency, wz * frequency);
-                    double density = n * amplitude;
-                    if (density > wy - baseHeight) {
+
+                    // Base terrain height from 2D noise.
+                    double surface = heightNoise.noise(wx * baseFrequency, wz * baseFrequency) * baseAmplitude + baseHeight;
+
+                    // Additional 3D displacement for cliffs, overhangs and floating islands.
+                    double displacement = detailNoise.noise(wx * detailFrequency, wy * detailFrequency, wz * detailFrequency) * detailAmplitude;
+
+                    double density = displacement + (surface - wy);
+                    if (density > 0) {
                         chunk.setBlock(x, y, z, BlockType.STONE);
+
+                        // Carve out caves using a separate noise field.
+                        double cave = caveNoise.noise(wx * caveFrequency, wy * caveFrequency, wz * caveFrequency);
+                        if (cave > caveThreshold) {
+                            chunk.setBlock(x, y, z, BlockType.AIR);
+                        }
                     }
                 }
             }

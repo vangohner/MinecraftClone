@@ -20,11 +20,11 @@ public class App {
         ChunkGenerator generator = new ChunkGenerator(seed);
         World world = new World(generator);
 
-        // Generate a small column of chunks at the spawn location so we can
-        // find a reasonable starting Y coordinate.
+        // Generate a tall column of chunks at the spawn location so we can
+        // find a reasonable starting Y coordinate even in mountainous terrain.
         int spawnChunkX = 0;
         int spawnChunkZ = 0;
-        for (int cy = -1; cy <= 1; cy++) {
+        for (int cy = -8; cy <= 8; cy++) {
             world.getChunk(spawnChunkX, cy, spawnChunkZ);
         }
 
