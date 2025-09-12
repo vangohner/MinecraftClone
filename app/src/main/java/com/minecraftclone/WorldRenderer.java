@@ -150,6 +150,7 @@ public class WorldRenderer {
             case GLFW_KEY_RIGHT -> player.rotate(0.1);
             case GLFW_KEY_UP -> player.pitch(-0.05);
             case GLFW_KEY_DOWN -> player.pitch(0.05);
+
             case GLFW_KEY_W -> moveRelative(0, 1);
             case GLFW_KEY_S -> moveRelative(0, -1);
             case GLFW_KEY_A -> moveRelative(-1, 0);
@@ -161,7 +162,9 @@ public class WorldRenderer {
     private void moveRelative(double right, double forward) {
         double yaw = player.getYaw();
         double dx = forward * Math.sin(yaw) + right * Math.cos(yaw);
+
         double dz = forward * Math.cos(yaw) - right * Math.sin(yaw);
+
         double newX = player.getX() + dx;
         double newZ = player.getZ() + dz;
         if (newX >= 0 && newX < Chunk.SIZE && newZ >= 0 && newZ < Chunk.SIZE) {

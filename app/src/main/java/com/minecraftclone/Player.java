@@ -8,11 +8,13 @@ public class Player {
     private double y;
     private double z;
     /**
-     * Player yaw in radians. 0 means looking toward positive Z.
+
+     * Player yaw in radians. 0 means looking toward negative Z (forward).
      */
     private double yaw;
     /**
-     * Player pitch in radians. 0 means looking horizontally.
+     * Player pitch in radians. 0 means looking horizontally. Positive looks downward.
+
      */
     private double pitch;
 
@@ -53,6 +55,7 @@ public class Player {
     public double getPitch() {
         return pitch;
     }
+
 
     public void pitch(double dpitch) {
         this.pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.pitch + dpitch));
