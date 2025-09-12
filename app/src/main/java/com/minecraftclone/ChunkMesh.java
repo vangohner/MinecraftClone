@@ -34,6 +34,21 @@ public class ChunkMesh {
         return new ChunkMesh(vbo, vertexCount);
     }
 
+    /**
+     * Builds a simplified heightmap mesh using the specified step size. Larger
+     * step values result in fewer quads and are suited for distant LOD
+     * rendering.
+     */
+    public static ChunkMesh buildLod(Chunk chunk, int baseX, int baseY, int baseZ, int step) {
+        FloatBuffer buffer = buildLodBuffer(chunk, baseX, baseY, baseZ, step);
+        int vertexCount = buffer.limit() / 6;
+        int vbo = glGenBuffers();
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, buffer, GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        return new ChunkMesh(vbo, vertexCount);
+    }
+
     private static FloatBuffer buildBuffer(World world, Chunk chunk, int baseX, int baseY, int baseZ) {
         List<Float> data = new ArrayList<>();
 
@@ -45,6 +60,45 @@ public class ChunkMesh {
         meshXZ(data, world, chunk, baseX, baseY, baseZ, true);   // +Y
         meshXZ(data, world, chunk, baseX, baseY, baseZ, false);  // -Y
 
+        FloatBuffer buf = BufferUtils.createFloatBuffer(data.size());
+        for (Float f : data) {
+            buf.put(f);
+        }
+        buf.flip();
+        return buf;
+    }
+
+    private static FloatBuffer buildLodBuffer(Chunk chunk, int baseX, int baseY, int baseZ, int step) {
+        List<Float> data = new ArrayList<>();
+        for (int x = 0; x < Chunk.SIZE; x += step) {
+            for (int z = 0; z < Chunk.SIZE; z += step) {
+                int topY = -1;
+                BlockType topType = BlockType.AIR;
+                for (int dx = 0; dx < step && x + dx < Chunk.SIZE; dx++) {
+                    for (int dz = 0; dz < step && z + dz < Chunk.SIZE; dz++) {
+                        for (int y = Chunk.SIZE - 1; y >= 0; y--) {
+                            BlockType t = chunk.getBlock(x + dx, y, z + dz);
+                            if (t != BlockType.AIR) {
+                                if (y > topY) {
+                                    topY = y;
+                                    topType = t;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (topY >= 0) {
+                    float x1 = baseX + x;
+                    float z1 = baseZ + z;
+                    float x2 = baseX + Math.min(x + step, Chunk.SIZE);
+                    float z2 = baseZ + Math.min(z + step, Chunk.SIZE);
+                    float y = baseY + topY + 1;
+                    float[] color = colorFor(topType);
+                    addFace(data, color, x1, y, z2, x2, y, z2, x2, y, z1, x1, y, z1);
+                }
+            }
+        }
         FloatBuffer buf = BufferUtils.createFloatBuffer(data.size());
         for (Float f : data) {
             buf.put(f);

@@ -26,6 +26,9 @@ You can optionally specify the initial render distance (in chunks) as the second
 ./gradlew run --args="12345 8"
 ```
 
+Far-away chunks are drawn using a simplified heightmap mesh so you can push
+render distances much higher than the full-detail radius without large pauses.
+
 On Windows use `gradlew.bat run` instead.
 
 To build a runnable JAR execute:

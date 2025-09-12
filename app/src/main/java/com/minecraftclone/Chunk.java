@@ -7,7 +7,9 @@ public class Chunk {
     public static final int SIZE = 16;
     private final BlockType[][][] blocks = new BlockType[SIZE][SIZE][SIZE];
     private ChunkMesh mesh;
+    private ChunkMesh lodMesh;
     private boolean dirty = true;
+    private boolean lodDirty = true;
 
     public Chunk() {
         // initialize all blocks to AIR
@@ -29,6 +31,7 @@ public class Chunk {
         check(x, y, z);
         blocks[x][y][z] = type;
         dirty = true;
+        lodDirty = true;
     }
 
     public boolean isDirty() {
@@ -44,9 +47,23 @@ public class Chunk {
         this.dirty = false;
     }
 
+    public boolean isLodDirty() {
+        return lodDirty;
+    }
+
+    public ChunkMesh getLodMesh() {
+        return lodMesh;
+    }
+
+    public void setLodMesh(ChunkMesh mesh) {
+        this.lodMesh = mesh;
+        this.lodDirty = false;
+    }
+
     /** Marks the chunk as needing its mesh rebuilt. */
     public void markDirty() {
         this.dirty = true;
+        this.lodDirty = true;
     }
 
     private void check(int x, int y, int z) {
