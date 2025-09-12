@@ -1,5 +1,9 @@
 package com.minecraftclone;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Generates chunk terrain using 3D noise.
  */
@@ -69,10 +73,24 @@ public class ChunkGenerator {
         int cz = Math.floorDiv(wz, Chunk.SIZE);
         int x = Math.floorMod(wx, Chunk.SIZE);
         int z = Math.floorMod(wz, Chunk.SIZE);
-        Chunk chunk = world.getChunk(cx, 0, cz);
-        for (int y = Chunk.SIZE - 1; y >= 0; y--) {
-            if (chunk.getBlock(x, y, z) != BlockType.AIR) {
-                return y;
+
+        List<Integer> ys = new ArrayList<>();
+        for (ChunkPos pos : world.getChunkPositions()) {
+            if (pos.x() == cx && pos.z() == cz) {
+                ys.add(pos.y());
+            }
+        }
+        if (ys.isEmpty()) {
+            return -1;
+        }
+        Collections.sort(ys);
+        for (int i = ys.size() - 1; i >= 0; i--) {
+            int cy = ys.get(i);
+            Chunk chunk = world.getChunk(cx, cy, cz);
+            for (int y = Chunk.SIZE - 1; y >= 0; y--) {
+                if (chunk.getBlock(x, y, z) != BlockType.AIR) {
+                    return cy * Chunk.SIZE + y;
+                }
             }
         }
         return -1;
