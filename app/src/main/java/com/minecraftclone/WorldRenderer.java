@@ -18,6 +18,8 @@ public class WorldRenderer {
     private static final int HEIGHT = 600;
     private static final double MOVE_SPEED = 0.1;
     private static final double MOUSE_SENSITIVITY = 0.002;
+    /** Number of chunks to render in each direction from the player. */
+    private static final int RENDER_DISTANCE = 4;
 
     private final World world;
     private final Player player;
@@ -69,7 +71,9 @@ public class WorldRenderer {
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
         float aspect = (float) WIDTH / HEIGHT;
-        setPerspective(70f, aspect, 0.1f, 100f);
+        // Extend the far plane so distant chunks remain visible when using a
+        // larger render distance.
+        setPerspective(70f, aspect, 0.1f, 500f);
         glMatrixMode(GL_MODELVIEW);
     }
 
@@ -96,7 +100,7 @@ public class WorldRenderer {
         int playerChunkX = (int) Math.floor(player.getX() / Chunk.SIZE);
         int playerChunkY = (int) Math.floor(player.getY() / Chunk.SIZE);
         int playerChunkZ = (int) Math.floor(player.getZ() / Chunk.SIZE);
-        int radius = 1;
+        int radius = RENDER_DISTANCE;
 
         for (int cx = playerChunkX - radius; cx <= playerChunkX + radius; cx++) {
             int baseX = cx * Chunk.SIZE;
