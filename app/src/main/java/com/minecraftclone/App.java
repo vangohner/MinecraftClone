@@ -1,8 +1,5 @@
 package com.minecraftclone;
 
-import javax.swing.JFrame;
-import javax.swing.SwingUtilities;
-
 /**
  * Entry point of the toy Minecraft clone.
  */
@@ -24,16 +21,8 @@ public class App {
         Player player = new Player(8, 1, 8);
         System.out.println("Player starting at " + player);
 
-        // Launch a window to render the world.
-        SwingUtilities.invokeLater(() -> {
-            JFrame frame = new JFrame("Minecraft Clone");
-            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            WorldRenderer renderer = new WorldRenderer(world, player);
-            frame.add(renderer);
-            frame.addKeyListener(renderer);
-            frame.pack();
-            frame.setLocationRelativeTo(null);
-            frame.setVisible(true);
-        });
+        // Launch the LWJGL-based renderer.
+        WorldRenderer renderer = new WorldRenderer(world, player);
+        renderer.run();
     }
 }
