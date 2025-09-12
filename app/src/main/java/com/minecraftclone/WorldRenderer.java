@@ -225,8 +225,8 @@ public class WorldRenderer {
 
     private void moveRelative(double right, double forward) {
         double yaw = player.getYaw();
-        double dx = (forward * Math.sin(yaw) + right * Math.cos(yaw)) * MOVE_SPEED;
-        double dz = (-forward * Math.cos(yaw) + right * Math.sin(yaw)) * MOVE_SPEED;
+        double dx = (-forward * Math.sin(yaw) + right * Math.cos(yaw)) * MOVE_SPEED;
+        double dz = (-forward * Math.cos(yaw) - right * Math.sin(yaw)) * MOVE_SPEED;
         player.move(dx, 0, dz);
     }
 
