@@ -57,7 +57,7 @@ public class WorldRenderer {
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
         float aspect = (float) WIDTH / HEIGHT;
-        org.lwjgl.util.glu.GLU.gluPerspective(70f, aspect, 0.1f, 100f);
+        setPerspective(70f, aspect, 0.1f, 100f);
         glMatrixMode(GL_MODELVIEW);
     }
 
@@ -164,5 +164,11 @@ public class WorldRenderer {
         if (newX >= 0 && newX < Chunk.SIZE && newZ >= 0 && newZ < Chunk.SIZE) {
             player.move(dx, 0, dz);
         }
+    }
+
+    private void setPerspective(float fov, float aspect, float near, float far) {
+        double y = near * Math.tan(Math.toRadians(fov) / 2.0);
+        double x = y * aspect;
+        glFrustum(-x, x, -y, y, near, far);
     }
 }

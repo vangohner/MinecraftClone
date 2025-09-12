@@ -13,12 +13,9 @@ dependencies {
     implementation("org.lwjgl:lwjgl")
     implementation("org.lwjgl:lwjgl-glfw")
     implementation("org.lwjgl:lwjgl-opengl")
-    implementation("org.lwjgl:lwjgl-glu")
-
     runtimeOnly("org.lwjgl:lwjgl::natives-linux")
     runtimeOnly("org.lwjgl:lwjgl-glfw::natives-linux")
     runtimeOnly("org.lwjgl:lwjgl-opengl::natives-linux")
-    runtimeOnly("org.lwjgl:lwjgl-glu::natives-linux")
 }
 
 java {
