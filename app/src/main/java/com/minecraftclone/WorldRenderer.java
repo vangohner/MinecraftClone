@@ -4,6 +4,9 @@ import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.system.MemoryUtil.NULL;
 
+import java.nio.FloatBuffer;
+
+import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.Callbacks;
 import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.opengl.GL;
@@ -18,12 +21,18 @@ public class WorldRenderer {
     private static final int HEIGHT = 600;
     private static final double MOVE_SPEED = 0.1;
     private static final double MOUSE_SENSITIVITY = 0.002;
+    /** Number of chunks to render in each direction from the player. */
+    private static final int RENDER_DISTANCE = 4;
 
     private final World world;
     private final Player player;
     private long window;
     private double lastMouseX;
     private double lastMouseY;
+
+    /** View frustum planes computed each frame. Each plane is stored as [A,B,C,D]. */
+    private final float[][] frustum = new float[6][4];
+    // TODO: Track visible neighbors for occlusion culling.
 
     public WorldRenderer(World world, Player player) {
         this.world = world;
@@ -69,7 +78,9 @@ public class WorldRenderer {
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
         float aspect = (float) WIDTH / HEIGHT;
-        setPerspective(70f, aspect, 0.1f, 100f);
+        // Extend the far plane so distant chunks remain visible when using a
+        // larger render distance.
+        setPerspective(70f, aspect, 0.1f, 500f);
         glMatrixMode(GL_MODELVIEW);
     }
 
@@ -85,6 +96,7 @@ public class WorldRenderer {
             glRotatef((float) Math.toDegrees(-player.getYaw()), 0f, 1f, 0f);
             glTranslatef((float) -player.getX(), (float) -player.getY(), (float) -player.getZ());
 
+            updateFrustum();
             renderBlocks();
 
             glfwSwapBuffers(window);
@@ -96,7 +108,7 @@ public class WorldRenderer {
         int playerChunkX = (int) Math.floor(player.getX() / Chunk.SIZE);
         int playerChunkY = (int) Math.floor(player.getY() / Chunk.SIZE);
         int playerChunkZ = (int) Math.floor(player.getZ() / Chunk.SIZE);
-        int radius = 1;
+        int radius = RENDER_DISTANCE;
 
         for (int cx = playerChunkX - radius; cx <= playerChunkX + radius; cx++) {
             int baseX = cx * Chunk.SIZE;
@@ -104,91 +116,132 @@ public class WorldRenderer {
                 int baseY = cy * Chunk.SIZE;
                 for (int cz = playerChunkZ - radius; cz <= playerChunkZ + radius; cz++) {
                     int baseZ = cz * Chunk.SIZE;
-                    Chunk chunk = world.getChunk(cx, cy, cz);
-                    for (int y = 0; y < Chunk.SIZE; y++) {
-                        for (int x = 0; x < Chunk.SIZE; x++) {
-                            for (int z = 0; z < Chunk.SIZE; z++) {
-                                BlockType type = chunk.getBlock(x, y, z);
-                                if (type != BlockType.AIR) {
-                                    int wx = baseX + x;
-                                    int wy = baseY + y;
-                                    int wz = baseZ + z;
-                                    drawCube(wx, wy, wz, type);
-                                }
-                            }
+                    if (!boxInFrustum(baseX, baseY, baseZ,
+                            baseX + Chunk.SIZE, baseY + Chunk.SIZE, baseZ + Chunk.SIZE)) {
+                        continue;
+                    }
+                    world.requestChunk(cx, cy, cz);
+                    Chunk chunk = world.getChunkIfLoaded(cx, cy, cz);
+                    if (chunk == null) {
+                        continue;
+                    }
+                    if (chunk.isDirty() || chunk.getMesh() == null) {
+                        ChunkMesh old = chunk.getMesh();
+                        if (old != null) {
+                            old.dispose();
                         }
+                        chunk.setMesh(ChunkMesh.build(world, chunk, baseX, baseY, baseZ));
+                    }
+                    ChunkMesh mesh = chunk.getMesh();
+                    if (mesh != null) {
+                        mesh.render();
                     }
                 }
             }
         }
     }
 
-    private void drawCube(int x, int y, int z, BlockType type) {
-        float[] base = colorFor(type);
-        glBegin(GL_QUADS);
+    /** Extracts the six view frustum planes from the current projection and modelview matrices. */
+    private void updateFrustum() {
+        FloatBuffer proj = BufferUtils.createFloatBuffer(16);
+        FloatBuffer modl = BufferUtils.createFloatBuffer(16);
+        glGetFloatv(GL_PROJECTION_MATRIX, proj);
+        glGetFloatv(GL_MODELVIEW_MATRIX, modl);
+        proj.rewind();
+        modl.rewind();
+        float[] p = new float[16];
+        float[] m = new float[16];
+        proj.get(p);
+        modl.get(m);
 
-        if (isAir(x, y, z + 1)) {
-            glColor3f(base[0] * 0.9f, base[1] * 0.9f, base[2] * 0.9f);
-            glVertex3f(x, y, z + 1);
-            glVertex3f(x + 1, y, z + 1);
-            glVertex3f(x + 1, y + 1, z + 1);
-            glVertex3f(x, y + 1, z + 1);
-        }
+        float[] clip = new float[16];
+        clip[0] = m[0] * p[0] + m[1] * p[4] + m[2] * p[8] + m[3] * p[12];
+        clip[1] = m[0] * p[1] + m[1] * p[5] + m[2] * p[9] + m[3] * p[13];
+        clip[2] = m[0] * p[2] + m[1] * p[6] + m[2] * p[10] + m[3] * p[14];
+        clip[3] = m[0] * p[3] + m[1] * p[7] + m[2] * p[11] + m[3] * p[15];
 
-        if (isAir(x, y, z - 1)) {
-            glColor3f(base[0] * 0.8f, base[1] * 0.8f, base[2] * 0.8f);
-            glVertex3f(x + 1, y, z);
-            glVertex3f(x, y, z);
-            glVertex3f(x, y + 1, z);
-            glVertex3f(x + 1, y + 1, z);
-        }
+        clip[4] = m[4] * p[0] + m[5] * p[4] + m[6] * p[8] + m[7] * p[12];
+        clip[5] = m[4] * p[1] + m[5] * p[5] + m[6] * p[9] + m[7] * p[13];
+        clip[6] = m[4] * p[2] + m[5] * p[6] + m[6] * p[10] + m[7] * p[14];
+        clip[7] = m[4] * p[3] + m[5] * p[7] + m[6] * p[11] + m[7] * p[15];
 
-        if (isAir(x - 1, y, z)) {
-            glColor3f(base[0] * 0.7f, base[1] * 0.7f, base[2] * 0.7f);
-            glVertex3f(x, y, z);
-            glVertex3f(x, y, z + 1);
-            glVertex3f(x, y + 1, z + 1);
-            glVertex3f(x, y + 1, z);
-        }
+        clip[8] = m[8] * p[0] + m[9] * p[4] + m[10] * p[8] + m[11] * p[12];
+        clip[9] = m[8] * p[1] + m[9] * p[5] + m[10] * p[9] + m[11] * p[13];
+        clip[10] = m[8] * p[2] + m[9] * p[6] + m[10] * p[10] + m[11] * p[14];
+        clip[11] = m[8] * p[3] + m[9] * p[7] + m[10] * p[11] + m[11] * p[15];
 
-        if (isAir(x + 1, y, z)) {
-            glColor3f(base[0] * 0.7f, base[1] * 0.7f, base[2] * 0.7f);
-            glVertex3f(x + 1, y, z + 1);
-            glVertex3f(x + 1, y, z);
-            glVertex3f(x + 1, y + 1, z);
-            glVertex3f(x + 1, y + 1, z + 1);
-        }
+        clip[12] = m[12] * p[0] + m[13] * p[4] + m[14] * p[8] + m[15] * p[12];
+        clip[13] = m[12] * p[1] + m[13] * p[5] + m[14] * p[9] + m[15] * p[13];
+        clip[14] = m[12] * p[2] + m[13] * p[6] + m[14] * p[10] + m[15] * p[14];
+        clip[15] = m[12] * p[3] + m[13] * p[7] + m[14] * p[11] + m[15] * p[15];
 
-        if (isAir(x, y + 1, z)) {
-            glColor3f(base[0], base[1], base[2]);
-            glVertex3f(x, y + 1, z + 1);
-            glVertex3f(x + 1, y + 1, z + 1);
-            glVertex3f(x + 1, y + 1, z);
-            glVertex3f(x, y + 1, z);
-        }
-
-        if (isAir(x, y - 1, z)) {
-            glColor3f(base[0] * 0.5f, base[1] * 0.5f, base[2] * 0.5f);
-            glVertex3f(x, y, z);
-            glVertex3f(x + 1, y, z);
-            glVertex3f(x + 1, y, z + 1);
-            glVertex3f(x, y, z + 1);
-        }
-
-        glEnd();
+        // Right
+        frustum[0][0] = clip[3] - clip[0];
+        frustum[0][1] = clip[7] - clip[4];
+        frustum[0][2] = clip[11] - clip[8];
+        frustum[0][3] = clip[15] - clip[12];
+        normalizePlane(0);
+        // Left
+        frustum[1][0] = clip[3] + clip[0];
+        frustum[1][1] = clip[7] + clip[4];
+        frustum[1][2] = clip[11] + clip[8];
+        frustum[1][3] = clip[15] + clip[12];
+        normalizePlane(1);
+        // Bottom
+        frustum[2][0] = clip[3] + clip[1];
+        frustum[2][1] = clip[7] + clip[5];
+        frustum[2][2] = clip[11] + clip[9];
+        frustum[2][3] = clip[15] + clip[13];
+        normalizePlane(2);
+        // Top
+        frustum[3][0] = clip[3] - clip[1];
+        frustum[3][1] = clip[7] - clip[5];
+        frustum[3][2] = clip[11] - clip[9];
+        frustum[3][3] = clip[15] - clip[13];
+        normalizePlane(3);
+        // Far
+        frustum[4][0] = clip[3] - clip[2];
+        frustum[4][1] = clip[7] - clip[6];
+        frustum[4][2] = clip[11] - clip[10];
+        frustum[4][3] = clip[15] - clip[14];
+        normalizePlane(4);
+        // Near
+        frustum[5][0] = clip[3] + clip[2];
+        frustum[5][1] = clip[7] + clip[6];
+        frustum[5][2] = clip[11] + clip[10];
+        frustum[5][3] = clip[15] + clip[14];
+        normalizePlane(5);
     }
 
-    private boolean isAir(int x, int y, int z) {
-        return world.getBlock(x, y, z) == BlockType.AIR;
+    private void normalizePlane(int i) {
+        float a = frustum[i][0];
+        float b = frustum[i][1];
+        float c = frustum[i][2];
+        float t = (float) Math.sqrt(a * a + b * b + c * c);
+        frustum[i][0] /= t;
+        frustum[i][1] /= t;
+        frustum[i][2] /= t;
+        frustum[i][3] /= t;
     }
 
-    private float[] colorFor(BlockType type) {
-        return switch (type) {
-            case GRASS -> new float[] {0.235f, 0.69f, 0.26f};
-            case DIRT -> new float[] {0.545f, 0.27f, 0.075f};
-            case STONE -> new float[] {0.5f, 0.5f, 0.5f};
-            default -> new float[] {1f, 1f, 1f};
-        };
+    private boolean boxInFrustum(float x1, float y1, float z1, float x2, float y2, float z2) {
+        for (int i = 0; i < 6; i++) {
+            float a = frustum[i][0];
+            float b = frustum[i][1];
+            float c = frustum[i][2];
+            float d = frustum[i][3];
+            if (a * x1 + b * y1 + c * z1 + d < 0 &&
+                a * x2 + b * y1 + c * z1 + d < 0 &&
+                a * x1 + b * y2 + c * z1 + d < 0 &&
+                a * x2 + b * y2 + c * z1 + d < 0 &&
+                a * x1 + b * y1 + c * z2 + d < 0 &&
+                a * x2 + b * y1 + c * z2 + d < 0 &&
+                a * x1 + b * y2 + c * z2 + d < 0 &&
+                a * x2 + b * y2 + c * z2 + d < 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void handleKey(long window, int key, int scancode, int action, int mods) {

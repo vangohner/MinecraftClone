@@ -6,6 +6,8 @@ package com.minecraftclone;
 public class Chunk {
     public static final int SIZE = 16;
     private final BlockType[][][] blocks = new BlockType[SIZE][SIZE][SIZE];
+    private ChunkMesh mesh;
+    private boolean dirty = true;
 
     public Chunk() {
         // initialize all blocks to AIR
@@ -26,6 +28,25 @@ public class Chunk {
     public void setBlock(int x, int y, int z, BlockType type) {
         check(x, y, z);
         blocks[x][y][z] = type;
+        dirty = true;
+    }
+
+    public boolean isDirty() {
+        return dirty;
+    }
+
+    public ChunkMesh getMesh() {
+        return mesh;
+    }
+
+    public void setMesh(ChunkMesh mesh) {
+        this.mesh = mesh;
+        this.dirty = false;
+    }
+
+    /** Marks the chunk as needing its mesh rebuilt. */
+    public void markDirty() {
+        this.dirty = true;
     }
 
     private void check(int x, int y, int z) {
