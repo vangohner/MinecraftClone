@@ -16,10 +16,14 @@ import org.lwjgl.opengl.GL;
 public class WorldRenderer {
     private static final int WIDTH = 800;
     private static final int HEIGHT = 600;
+    private static final double MOVE_SPEED = 0.1;
+    private static final double MOUSE_SENSITIVITY = 0.002;
 
     private final World world;
     private final Player player;
     private long window;
+    private double lastMouseX;
+    private double lastMouseY;
 
     public WorldRenderer(World world, Player player) {
         this.world = world;
@@ -49,6 +53,14 @@ public class WorldRenderer {
         glfwMakeContextCurrent(window);
         glfwSwapInterval(1);
         glfwSetKeyCallback(window, this::handleKey);
+        glfwSetCursorPosCallback(window, this::handleMouse);
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+        // Initialize the mouse position to the center of the window so that
+        // the first mouse delta is well-defined.
+        lastMouseX = WIDTH / 2.0;
+        lastMouseY = HEIGHT / 2.0;
+        glfwSetCursorPos(window, lastMouseX, lastMouseY);
         GL.createCapabilities();
 
         glEnable(GL_DEPTH_TEST);
@@ -83,53 +95,73 @@ public class WorldRenderer {
                 for (int z = 0; z < Chunk.SIZE; z++) {
                     BlockType type = chunk.getBlock(x, y, z);
                     if (type != BlockType.AIR) {
-                        drawCube(x, y, z, type);
+                        drawCube(chunk, x, y, z, type);
                     }
                 }
             }
         }
     }
 
-    private void drawCube(int x, int y, int z, BlockType type) {
+    private void drawCube(Chunk chunk, int x, int y, int z, BlockType type) {
         float[] base = colorFor(type);
         glBegin(GL_QUADS);
-        // front
-        glColor3f(base[0] * 0.9f, base[1] * 0.9f, base[2] * 0.9f);
-        glVertex3f(x, y, z + 1);
-        glVertex3f(x + 1, y, z + 1);
-        glVertex3f(x + 1, y + 1, z + 1);
-        glVertex3f(x, y + 1, z + 1);
-        // back
-        glColor3f(base[0] * 0.8f, base[1] * 0.8f, base[2] * 0.8f);
-        glVertex3f(x + 1, y, z);
-        glVertex3f(x, y, z);
-        glVertex3f(x, y + 1, z);
-        glVertex3f(x + 1, y + 1, z);
-        // left
-        glColor3f(base[0] * 0.7f, base[1] * 0.7f, base[2] * 0.7f);
-        glVertex3f(x, y, z);
-        glVertex3f(x, y, z + 1);
-        glVertex3f(x, y + 1, z + 1);
-        glVertex3f(x, y + 1, z);
-        // right
-        glColor3f(base[0] * 0.7f, base[1] * 0.7f, base[2] * 0.7f);
-        glVertex3f(x + 1, y, z + 1);
-        glVertex3f(x + 1, y, z);
-        glVertex3f(x + 1, y + 1, z);
-        glVertex3f(x + 1, y + 1, z + 1);
-        // top
-        glColor3f(base[0], base[1], base[2]);
-        glVertex3f(x, y + 1, z + 1);
-        glVertex3f(x + 1, y + 1, z + 1);
-        glVertex3f(x + 1, y + 1, z);
-        glVertex3f(x, y + 1, z);
-        // bottom
-        glColor3f(base[0] * 0.5f, base[1] * 0.5f, base[2] * 0.5f);
-        glVertex3f(x, y, z);
-        glVertex3f(x + 1, y, z);
-        glVertex3f(x + 1, y, z + 1);
-        glVertex3f(x, y, z + 1);
+
+        if (isAir(chunk, x, y, z + 1)) {
+            glColor3f(base[0] * 0.9f, base[1] * 0.9f, base[2] * 0.9f);
+            glVertex3f(x, y, z + 1);
+            glVertex3f(x + 1, y, z + 1);
+            glVertex3f(x + 1, y + 1, z + 1);
+            glVertex3f(x, y + 1, z + 1);
+        }
+
+        if (isAir(chunk, x, y, z - 1)) {
+            glColor3f(base[0] * 0.8f, base[1] * 0.8f, base[2] * 0.8f);
+            glVertex3f(x + 1, y, z);
+            glVertex3f(x, y, z);
+            glVertex3f(x, y + 1, z);
+            glVertex3f(x + 1, y + 1, z);
+        }
+
+        if (isAir(chunk, x - 1, y, z)) {
+            glColor3f(base[0] * 0.7f, base[1] * 0.7f, base[2] * 0.7f);
+            glVertex3f(x, y, z);
+            glVertex3f(x, y, z + 1);
+            glVertex3f(x, y + 1, z + 1);
+            glVertex3f(x, y + 1, z);
+        }
+
+        if (isAir(chunk, x + 1, y, z)) {
+            glColor3f(base[0] * 0.7f, base[1] * 0.7f, base[2] * 0.7f);
+            glVertex3f(x + 1, y, z + 1);
+            glVertex3f(x + 1, y, z);
+            glVertex3f(x + 1, y + 1, z);
+            glVertex3f(x + 1, y + 1, z + 1);
+        }
+
+        if (isAir(chunk, x, y + 1, z)) {
+            glColor3f(base[0], base[1], base[2]);
+            glVertex3f(x, y + 1, z + 1);
+            glVertex3f(x + 1, y + 1, z + 1);
+            glVertex3f(x + 1, y + 1, z);
+            glVertex3f(x, y + 1, z);
+        }
+
+        if (isAir(chunk, x, y - 1, z)) {
+            glColor3f(base[0] * 0.5f, base[1] * 0.5f, base[2] * 0.5f);
+            glVertex3f(x, y, z);
+            glVertex3f(x + 1, y, z);
+            glVertex3f(x + 1, y, z + 1);
+            glVertex3f(x, y, z + 1);
+        }
+
         glEnd();
+    }
+
+    private boolean isAir(Chunk chunk, int x, int y, int z) {
+        if (x < 0 || x >= Chunk.SIZE || y < 0 || y >= Chunk.SIZE || z < 0 || z >= Chunk.SIZE) {
+            return true;
+        }
+        return chunk.getBlock(x, y, z) == BlockType.AIR;
     }
 
     private float[] colorFor(BlockType type) {
@@ -155,21 +187,30 @@ public class WorldRenderer {
             case GLFW_KEY_S -> moveRelative(0, -1);
             case GLFW_KEY_A -> moveRelative(-1, 0);
             case GLFW_KEY_D -> moveRelative(1, 0);
+            case GLFW_KEY_SPACE -> moveVertical(1);
+            case GLFW_KEY_LEFT_SHIFT -> moveVertical(-1);
             default -> {}
         }
     }
 
     private void moveRelative(double right, double forward) {
         double yaw = player.getYaw();
-        double dx = forward * Math.sin(yaw) + right * Math.cos(yaw);
+        double dx = (forward * Math.sin(yaw) + right * Math.cos(yaw)) * MOVE_SPEED;
+        double dz = (forward * Math.cos(yaw) - right * Math.sin(yaw)) * MOVE_SPEED;
+        player.move(dx, 0, dz);
+    }
 
-        double dz = forward * Math.cos(yaw) - right * Math.sin(yaw);
+    private void moveVertical(double up) {
+        player.move(0, up * MOVE_SPEED, 0);
+    }
 
-        double newX = player.getX() + dx;
-        double newZ = player.getZ() + dz;
-        if (newX >= 0 && newX < Chunk.SIZE && newZ >= 0 && newZ < Chunk.SIZE) {
-            player.move(dx, 0, dz);
-        }
+    private void handleMouse(long window, double xpos, double ypos) {
+        double dx = xpos - lastMouseX;
+        double dy = ypos - lastMouseY;
+        lastMouseX = xpos;
+        lastMouseY = ypos;
+        player.rotate(dx * MOUSE_SENSITIVITY);
+        player.pitch(dy * MOUSE_SENSITIVITY);
     }
 
     private void setPerspective(float fov, float aspect, float near, float far) {
