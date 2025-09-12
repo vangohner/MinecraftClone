@@ -14,6 +14,12 @@ This repository uses the Gradle wrapper. To launch the demo straight from the so
 ./gradlew run
 ```
 
+To start the world with a specific seed pass it as an argument:
+
+```
+./gradlew run --args="12345"
+```
+
 On Windows use `gradlew.bat run` instead.
 
 To build a runnable JAR execute:
