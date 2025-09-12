@@ -109,90 +109,20 @@ public class WorldRenderer {
                 for (int cz = playerChunkZ - radius; cz <= playerChunkZ + radius; cz++) {
                     int baseZ = cz * Chunk.SIZE;
                     Chunk chunk = world.getChunk(cx, cy, cz);
-                    for (int y = 0; y < Chunk.SIZE; y++) {
-                        for (int x = 0; x < Chunk.SIZE; x++) {
-                            for (int z = 0; z < Chunk.SIZE; z++) {
-                                BlockType type = chunk.getBlock(x, y, z);
-                                if (type != BlockType.AIR) {
-                                    int wx = baseX + x;
-                                    int wy = baseY + y;
-                                    int wz = baseZ + z;
-                                    drawCube(wx, wy, wz, type);
-                                }
-                            }
+                    if (chunk.isDirty() || chunk.getMesh() == null) {
+                        ChunkMesh old = chunk.getMesh();
+                        if (old != null) {
+                            old.dispose();
                         }
+                        chunk.setMesh(ChunkMesh.build(world, chunk, baseX, baseY, baseZ));
+                    }
+                    ChunkMesh mesh = chunk.getMesh();
+                    if (mesh != null) {
+                        mesh.render();
                     }
                 }
             }
         }
-    }
-
-    private void drawCube(int x, int y, int z, BlockType type) {
-        float[] base = colorFor(type);
-        glBegin(GL_QUADS);
-
-        if (isAir(x, y, z + 1)) {
-            glColor3f(base[0] * 0.9f, base[1] * 0.9f, base[2] * 0.9f);
-            glVertex3f(x, y, z + 1);
-            glVertex3f(x + 1, y, z + 1);
-            glVertex3f(x + 1, y + 1, z + 1);
-            glVertex3f(x, y + 1, z + 1);
-        }
-
-        if (isAir(x, y, z - 1)) {
-            glColor3f(base[0] * 0.8f, base[1] * 0.8f, base[2] * 0.8f);
-            glVertex3f(x + 1, y, z);
-            glVertex3f(x, y, z);
-            glVertex3f(x, y + 1, z);
-            glVertex3f(x + 1, y + 1, z);
-        }
-
-        if (isAir(x - 1, y, z)) {
-            glColor3f(base[0] * 0.7f, base[1] * 0.7f, base[2] * 0.7f);
-            glVertex3f(x, y, z);
-            glVertex3f(x, y, z + 1);
-            glVertex3f(x, y + 1, z + 1);
-            glVertex3f(x, y + 1, z);
-        }
-
-        if (isAir(x + 1, y, z)) {
-            glColor3f(base[0] * 0.7f, base[1] * 0.7f, base[2] * 0.7f);
-            glVertex3f(x + 1, y, z + 1);
-            glVertex3f(x + 1, y, z);
-            glVertex3f(x + 1, y + 1, z);
-            glVertex3f(x + 1, y + 1, z + 1);
-        }
-
-        if (isAir(x, y + 1, z)) {
-            glColor3f(base[0], base[1], base[2]);
-            glVertex3f(x, y + 1, z + 1);
-            glVertex3f(x + 1, y + 1, z + 1);
-            glVertex3f(x + 1, y + 1, z);
-            glVertex3f(x, y + 1, z);
-        }
-
-        if (isAir(x, y - 1, z)) {
-            glColor3f(base[0] * 0.5f, base[1] * 0.5f, base[2] * 0.5f);
-            glVertex3f(x, y, z);
-            glVertex3f(x + 1, y, z);
-            glVertex3f(x + 1, y, z + 1);
-            glVertex3f(x, y, z + 1);
-        }
-
-        glEnd();
-    }
-
-    private boolean isAir(int x, int y, int z) {
-        return world.getBlock(x, y, z) == BlockType.AIR;
-    }
-
-    private float[] colorFor(BlockType type) {
-        return switch (type) {
-            case GRASS -> new float[] {0.235f, 0.69f, 0.26f};
-            case DIRT -> new float[] {0.545f, 0.27f, 0.075f};
-            case STONE -> new float[] {0.5f, 0.5f, 0.5f};
-            default -> new float[] {1f, 1f, 1f};
-        };
     }
 
     private void handleKey(long window, int key, int scancode, int action, int mods) {
