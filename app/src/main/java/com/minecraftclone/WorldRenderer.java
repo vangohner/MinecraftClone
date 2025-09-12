@@ -93,24 +93,41 @@ public class WorldRenderer {
     }
 
     private void renderBlocks() {
-        Chunk chunk = world.getChunk(0, 0, 0);
-        for (int y = 0; y < Chunk.SIZE; y++) {
-            for (int x = 0; x < Chunk.SIZE; x++) {
-                for (int z = 0; z < Chunk.SIZE; z++) {
-                    BlockType type = chunk.getBlock(x, y, z);
-                    if (type != BlockType.AIR) {
-                        drawCube(chunk, x, y, z, type);
+        int playerChunkX = (int) Math.floor(player.getX() / Chunk.SIZE);
+        int playerChunkY = (int) Math.floor(player.getY() / Chunk.SIZE);
+        int playerChunkZ = (int) Math.floor(player.getZ() / Chunk.SIZE);
+        int radius = 1;
+
+        for (int cx = playerChunkX - radius; cx <= playerChunkX + radius; cx++) {
+            int baseX = cx * Chunk.SIZE;
+            for (int cy = playerChunkY - radius; cy <= playerChunkY + radius; cy++) {
+                int baseY = cy * Chunk.SIZE;
+                for (int cz = playerChunkZ - radius; cz <= playerChunkZ + radius; cz++) {
+                    int baseZ = cz * Chunk.SIZE;
+                    Chunk chunk = world.getChunk(cx, cy, cz);
+                    for (int y = 0; y < Chunk.SIZE; y++) {
+                        for (int x = 0; x < Chunk.SIZE; x++) {
+                            for (int z = 0; z < Chunk.SIZE; z++) {
+                                BlockType type = chunk.getBlock(x, y, z);
+                                if (type != BlockType.AIR) {
+                                    int wx = baseX + x;
+                                    int wy = baseY + y;
+                                    int wz = baseZ + z;
+                                    drawCube(wx, wy, wz, type);
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
-    private void drawCube(Chunk chunk, int x, int y, int z, BlockType type) {
+    private void drawCube(int x, int y, int z, BlockType type) {
         float[] base = colorFor(type);
         glBegin(GL_QUADS);
 
-        if (isAir(chunk, x, y, z + 1)) {
+        if (isAir(x, y, z + 1)) {
             glColor3f(base[0] * 0.9f, base[1] * 0.9f, base[2] * 0.9f);
             glVertex3f(x, y, z + 1);
             glVertex3f(x + 1, y, z + 1);
@@ -118,7 +135,7 @@ public class WorldRenderer {
             glVertex3f(x, y + 1, z + 1);
         }
 
-        if (isAir(chunk, x, y, z - 1)) {
+        if (isAir(x, y, z - 1)) {
             glColor3f(base[0] * 0.8f, base[1] * 0.8f, base[2] * 0.8f);
             glVertex3f(x + 1, y, z);
             glVertex3f(x, y, z);
@@ -126,7 +143,7 @@ public class WorldRenderer {
             glVertex3f(x + 1, y + 1, z);
         }
 
-        if (isAir(chunk, x - 1, y, z)) {
+        if (isAir(x - 1, y, z)) {
             glColor3f(base[0] * 0.7f, base[1] * 0.7f, base[2] * 0.7f);
             glVertex3f(x, y, z);
             glVertex3f(x, y, z + 1);
@@ -134,7 +151,7 @@ public class WorldRenderer {
             glVertex3f(x, y + 1, z);
         }
 
-        if (isAir(chunk, x + 1, y, z)) {
+        if (isAir(x + 1, y, z)) {
             glColor3f(base[0] * 0.7f, base[1] * 0.7f, base[2] * 0.7f);
             glVertex3f(x + 1, y, z + 1);
             glVertex3f(x + 1, y, z);
@@ -142,7 +159,7 @@ public class WorldRenderer {
             glVertex3f(x + 1, y + 1, z + 1);
         }
 
-        if (isAir(chunk, x, y + 1, z)) {
+        if (isAir(x, y + 1, z)) {
             glColor3f(base[0], base[1], base[2]);
             glVertex3f(x, y + 1, z + 1);
             glVertex3f(x + 1, y + 1, z + 1);
@@ -150,7 +167,7 @@ public class WorldRenderer {
             glVertex3f(x, y + 1, z);
         }
 
-        if (isAir(chunk, x, y - 1, z)) {
+        if (isAir(x, y - 1, z)) {
             glColor3f(base[0] * 0.5f, base[1] * 0.5f, base[2] * 0.5f);
             glVertex3f(x, y, z);
             glVertex3f(x + 1, y, z);
@@ -161,11 +178,8 @@ public class WorldRenderer {
         glEnd();
     }
 
-    private boolean isAir(Chunk chunk, int x, int y, int z) {
-        if (x < 0 || x >= Chunk.SIZE || y < 0 || y >= Chunk.SIZE || z < 0 || z >= Chunk.SIZE) {
-            return true;
-        }
-        return chunk.getBlock(x, y, z) == BlockType.AIR;
+    private boolean isAir(int x, int y, int z) {
+        return world.getBlock(x, y, z) == BlockType.AIR;
     }
 
     private float[] colorFor(BlockType type) {
