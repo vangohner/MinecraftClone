@@ -76,6 +76,10 @@ public class WorldRenderer {
     private void loop() {
         while (!glfwWindowShouldClose(window)) {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            // Handle continuous movement input each frame.
+            handleMovement();
+
             glLoadIdentity();
             glRotatef((float) Math.toDegrees(-player.getPitch()), 1f, 0f, 0f);
             glRotatef((float) Math.toDegrees(-player.getYaw()), 0f, 1f, 0f);
@@ -178,25 +182,51 @@ public class WorldRenderer {
             return;
         }
         switch (key) {
-            case GLFW_KEY_LEFT -> player.rotate(-0.1);
-            case GLFW_KEY_RIGHT -> player.rotate(0.1);
-            case GLFW_KEY_UP -> player.pitch(-0.05);
-            case GLFW_KEY_DOWN -> player.pitch(0.05);
-
-            case GLFW_KEY_W -> moveRelative(0, 1);
-            case GLFW_KEY_S -> moveRelative(0, -1);
-            case GLFW_KEY_A -> moveRelative(-1, 0);
-            case GLFW_KEY_D -> moveRelative(1, 0);
-            case GLFW_KEY_SPACE -> moveVertical(1);
-            case GLFW_KEY_LEFT_SHIFT -> moveVertical(-1);
+            case GLFW_KEY_LEFT -> player.rotate(0.1);
+            case GLFW_KEY_RIGHT -> player.rotate(-0.1);
+            case GLFW_KEY_UP -> player.pitch(0.05);
+            case GLFW_KEY_DOWN -> player.pitch(-0.05);
+            case GLFW_KEY_ESCAPE -> glfwSetWindowShouldClose(window, true);
             default -> {}
+        }
+    }
+
+    private void handleMovement() {
+        double forward = 0;
+        double right = 0;
+        double up = 0;
+
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+            forward += 1;
+        }
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+            forward -= 1;
+        }
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+            right += 1;
+        }
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+            right -= 1;
+        }
+        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+            up += 1;
+        }
+        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+            up -= 1;
+        }
+
+        if (forward != 0 || right != 0) {
+            moveRelative(right, forward);
+        }
+        if (up != 0) {
+            moveVertical(up);
         }
     }
 
     private void moveRelative(double right, double forward) {
         double yaw = player.getYaw();
-        double dx = (forward * Math.sin(yaw) + right * Math.cos(yaw)) * MOVE_SPEED;
-        double dz = (forward * Math.cos(yaw) - right * Math.sin(yaw)) * MOVE_SPEED;
+        double dx = (-forward * Math.sin(yaw) + right * Math.cos(yaw)) * MOVE_SPEED;
+        double dz = (-forward * Math.cos(yaw) - right * Math.sin(yaw)) * MOVE_SPEED;
         player.move(dx, 0, dz);
     }
 
@@ -209,8 +239,8 @@ public class WorldRenderer {
         double dy = ypos - lastMouseY;
         lastMouseX = xpos;
         lastMouseY = ypos;
-        player.rotate(dx * MOUSE_SENSITIVITY);
-        player.pitch(dy * MOUSE_SENSITIVITY);
+        player.rotate(-dx * MOUSE_SENSITIVITY);
+        player.pitch(-dy * MOUSE_SENSITIVITY);
     }
 
     private void setPerspective(float fov, float aspect, float near, float far) {
