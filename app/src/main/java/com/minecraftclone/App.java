@@ -28,7 +28,9 @@ public class App {
         SwingUtilities.invokeLater(() -> {
             JFrame frame = new JFrame("Minecraft Clone");
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            frame.add(new WorldRenderer(world));
+            WorldRenderer renderer = new WorldRenderer(world, player);
+            frame.add(renderer);
+            frame.addKeyListener(renderer);
             frame.pack();
             frame.setLocationRelativeTo(null);
             frame.setVisible(true);

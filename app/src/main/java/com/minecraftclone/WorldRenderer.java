@@ -5,6 +5,8 @@ import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Polygon;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
 
 import javax.swing.JPanel;
 
@@ -14,16 +16,20 @@ import javax.swing.JPanel;
  * isometric projection so the world can be visualised outside of the
  * console.
  */
-public class WorldRenderer extends JPanel {
+public class WorldRenderer extends JPanel implements KeyListener {
     private static final int TILE_WIDTH = 40;
     private static final int TILE_HEIGHT = 20;
 
     private final World world;
+    private final Player player;
 
-    public WorldRenderer(World world) {
+    public WorldRenderer(World world, Player player) {
         this.world = world;
+        this.player = player;
         setPreferredSize(new Dimension(800, 600));
         setBackground(Color.CYAN.darker());
+        setFocusable(true);
+        addKeyListener(this);
     }
 
     @Override
@@ -32,7 +38,11 @@ public class WorldRenderer extends JPanel {
         Graphics2D g2d = (Graphics2D) g;
 
         int offsetX = getWidth() / 2;
-        int offsetY = 50;
+        int offsetY = getHeight() / 2;
+
+        double px = player.getX();
+        double py = player.getY();
+        double pz = player.getZ();
 
         Chunk chunk = world.getChunk(0, 0, 0);
         for (int y = 0; y < Chunk.SIZE; y++) {
@@ -40,16 +50,21 @@ public class WorldRenderer extends JPanel {
                 for (int z = 0; z < Chunk.SIZE; z++) {
                     BlockType type = chunk.getBlock(x, y, z);
                     if (type != BlockType.AIR) {
-                        drawBlock(g2d, type, x, y, z, offsetX, offsetY);
+                        drawBlock(g2d, type, x, y, z, px, py, pz, offsetX, offsetY);
                     }
                 }
             }
         }
     }
 
-    private void drawBlock(Graphics2D g2d, BlockType type, int x, int y, int z, int offsetX, int offsetY) {
-        int sx = (x - z) * TILE_WIDTH / 2 + offsetX;
-        int sy = (x + z) * TILE_HEIGHT / 2 - y * TILE_HEIGHT + offsetY;
+    private void drawBlock(Graphics2D g2d, BlockType type, int x, int y, int z,
+            double px, double py, double pz, int offsetX, int offsetY) {
+        double relX = x - px;
+        double relY = y - py;
+        double relZ = z - pz;
+
+        int sx = (int) ((relX - relZ) * TILE_WIDTH / 2) + offsetX;
+        int sy = (int) ((relX + relZ) * TILE_HEIGHT / 2 - relY * TILE_HEIGHT) + offsetY;
 
         // Top face
         Polygon top = new Polygon();
@@ -92,6 +107,38 @@ public class WorldRenderer extends JPanel {
             case STONE -> Color.GRAY;
             default -> Color.WHITE;
         };
+    }
+
+    @Override
+    public void keyPressed(KeyEvent e) {
+        double dx = 0;
+        double dz = 0;
+        switch (e.getKeyCode()) {
+            case KeyEvent.VK_W, KeyEvent.VK_UP -> dz = -1;
+            case KeyEvent.VK_S, KeyEvent.VK_DOWN -> dz = 1;
+            case KeyEvent.VK_A, KeyEvent.VK_LEFT -> dx = -1;
+            case KeyEvent.VK_D, KeyEvent.VK_RIGHT -> dx = 1;
+            default -> {
+                return;
+            }
+        }
+
+        double newX = player.getX() + dx;
+        double newZ = player.getZ() + dz;
+        if (newX >= 0 && newX < Chunk.SIZE && newZ >= 0 && newZ < Chunk.SIZE) {
+            player.move(dx, 0, dz);
+            repaint();
+        }
+    }
+
+    @Override
+    public void keyReleased(KeyEvent e) {
+        // no-op
+    }
+
+    @Override
+    public void keyTyped(KeyEvent e) {
+        // no-op
     }
 }
 
