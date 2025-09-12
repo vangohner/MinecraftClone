@@ -10,12 +10,27 @@ import java.util.Set;
  */
 public class World {
     private final Map<ChunkPos, Chunk> chunks = new HashMap<>();
+    private final ChunkGenerator generator;
+
+    public World(ChunkGenerator generator) {
+        this.generator = generator;
+    }
 
     /**
-     * Retrieves a chunk at the given chunk coordinates, creating it if necessary.
+     * Retrieves a chunk at the given chunk coordinates, creating and generating it
+     * if necessary.
      */
     public Chunk getChunk(int cx, int cy, int cz) {
-        return chunks.computeIfAbsent(new ChunkPos(cx, cy, cz), pos -> new Chunk());
+        ChunkPos pos = new ChunkPos(cx, cy, cz);
+        Chunk chunk = chunks.get(pos);
+        if (chunk == null) {
+            chunk = new Chunk();
+            chunks.put(pos, chunk);
+            if (generator != null) {
+                generator.generate(this, cx, cy, cz);
+            }
+        }
+        return chunk;
     }
 
     /**

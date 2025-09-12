@@ -17,21 +17,19 @@ public class App {
         }
         System.out.println("Using seed: " + seed);
 
-        World world = new World();
-
-        // Generate a grid of chunks using 3D noise terrain.
         ChunkGenerator generator = new ChunkGenerator(seed);
-        for (int cx = 0; cx < 16; cx++) {
-            for (int cy = 0; cy < 16; cy++) {
-                for (int cz = 0; cz < 16; cz++) {
-                    generator.generate(world, cx, cy, cz);
-                }
-            }
+        World world = new World(generator);
+
+        // Generate a small column of chunks at the spawn location so we can
+        // find a reasonable starting Y coordinate.
+        int spawnChunkX = 0;
+        int spawnChunkZ = 0;
+        for (int cy = -1; cy <= 1; cy++) {
+            world.getChunk(spawnChunkX, cy, spawnChunkZ);
         }
 
-        int centerChunk = 16 / 2;
-        int spawnX = centerChunk * Chunk.SIZE + Chunk.SIZE / 2;
-        int spawnZ = centerChunk * Chunk.SIZE + Chunk.SIZE / 2;
+        int spawnX = spawnChunkX * Chunk.SIZE + Chunk.SIZE / 2;
+        int spawnZ = spawnChunkZ * Chunk.SIZE + Chunk.SIZE / 2;
         int surfaceY = generator.findSurfaceY(world, spawnX, spawnZ);
         Player player = new Player(spawnX, surfaceY + 1, spawnZ);
         System.out.println("Player starting at " + player);
