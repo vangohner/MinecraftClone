@@ -36,69 +36,212 @@ public class ChunkMesh {
 
     private static FloatBuffer buildBuffer(World world, Chunk chunk, int baseX, int baseY, int baseZ) {
         List<Float> data = new ArrayList<>();
-        for (int y = 0; y < Chunk.SIZE; y++) {
-            for (int x = 0; x < Chunk.SIZE; x++) {
-                for (int z = 0; z < Chunk.SIZE; z++) {
-                    BlockType type = chunk.getBlock(x, y, z);
-                    if (type == BlockType.AIR) {
-                        continue;
-                    }
-                    int wx = baseX + x;
-                    int wy = baseY + y;
-                    int wz = baseZ + z;
-                    float[] base = colorFor(type);
 
-                    if (isAir(world, wx, wy, wz + 1)) {
-                        addFace(data, shade(base, 0.9f),
-                                wx, wy, wz + 1,
-                                wx + 1, wy, wz + 1,
-                                wx + 1, wy + 1, wz + 1,
-                                wx, wy + 1, wz + 1);
-                    }
-                    if (isAir(world, wx, wy, wz - 1)) {
-                        addFace(data, shade(base, 0.8f),
-                                wx + 1, wy, wz,
-                                wx, wy, wz,
-                                wx, wy + 1, wz,
-                                wx + 1, wy + 1, wz);
-                    }
-                    if (isAir(world, wx - 1, wy, wz)) {
-                        addFace(data, shade(base, 0.7f),
-                                wx, wy, wz,
-                                wx, wy, wz + 1,
-                                wx, wy + 1, wz + 1,
-                                wx, wy + 1, wz);
-                    }
-                    if (isAir(world, wx + 1, wy, wz)) {
-                        addFace(data, shade(base, 0.7f),
-                                wx + 1, wy, wz + 1,
-                                wx + 1, wy, wz,
-                                wx + 1, wy + 1, wz,
-                                wx + 1, wy + 1, wz + 1);
-                    }
-                    if (isAir(world, wx, wy + 1, wz)) {
-                        addFace(data, shade(base, 1.0f),
-                                wx, wy + 1, wz + 1,
-                                wx + 1, wy + 1, wz + 1,
-                                wx + 1, wy + 1, wz,
-                                wx, wy + 1, wz);
-                    }
-                    if (isAir(world, wx, wy - 1, wz)) {
-                        addFace(data, shade(base, 0.5f),
-                                wx, wy, wz,
-                                wx + 1, wy, wz,
-                                wx + 1, wy, wz + 1,
-                                wx, wy, wz + 1);
-                    }
-                }
-            }
-        }
+        // Greedy mesh each pair of parallel faces
+        meshXY(data, world, chunk, baseX, baseY, baseZ, true);   // +Z
+        meshXY(data, world, chunk, baseX, baseY, baseZ, false);  // -Z
+        meshYZ(data, world, chunk, baseX, baseY, baseZ, true);   // +X
+        meshYZ(data, world, chunk, baseX, baseY, baseZ, false);  // -X
+        meshXZ(data, world, chunk, baseX, baseY, baseZ, true);   // +Y
+        meshXZ(data, world, chunk, baseX, baseY, baseZ, false);  // -Y
+
         FloatBuffer buf = BufferUtils.createFloatBuffer(data.size());
         for (Float f : data) {
             buf.put(f);
         }
         buf.flip();
         return buf;
+    }
+
+    private static void meshXY(List<Float> data, World world, Chunk chunk,
+            int baseX, int baseY, int baseZ, boolean positive) {
+        float shadeFactor = positive ? 0.9f : 0.8f;
+        for (int z = 0; z < Chunk.SIZE; z++) {
+            boolean[][] visited = new boolean[Chunk.SIZE][Chunk.SIZE];
+            for (int y = 0; y < Chunk.SIZE; y++) {
+                for (int x = 0; x < Chunk.SIZE; x++) {
+                    if (visited[x][y]) {
+                        continue;
+                    }
+                    BlockType type = chunk.getBlock(x, y, z);
+                    int nx = baseX + x;
+                    int ny = baseY + y;
+                    int nz = baseZ + z + (positive ? 1 : -1);
+                    if (type == BlockType.AIR || !isAir(world, nx, ny, nz)) {
+                        visited[x][y] = true;
+                        continue;
+                    }
+
+                    int width = 1;
+                    while (x + width < Chunk.SIZE && !visited[x + width][y]) {
+                        BlockType t = chunk.getBlock(x + width, y, z);
+                        if (t != type || !isAir(world, baseX + x + width, ny, nz)) {
+                            break;
+                        }
+                        width++;
+                    }
+
+                    int height = 1;
+                    outer: while (y + height < Chunk.SIZE) {
+                        for (int w = 0; w < width; w++) {
+                            if (visited[x + w][y + height]) {
+                                break outer;
+                            }
+                            BlockType t = chunk.getBlock(x + w, y + height, z);
+                            if (t != type || !isAir(world, baseX + x + w, baseY + y + height, nz)) {
+                                break outer;
+                            }
+                        }
+                        height++;
+                    }
+
+                    for (int dy = 0; dy < height; dy++) {
+                        for (int dx = 0; dx < width; dx++) {
+                            visited[x + dx][y + dy] = true;
+                        }
+                    }
+
+                    float[] color = shade(colorFor(type), shadeFactor);
+                    float x1 = baseX + x;
+                    float x2 = baseX + x + width;
+                    float y1 = baseY + y;
+                    float y2 = baseY + y + height;
+                    float zPlane = baseZ + z + (positive ? 1 : 0);
+                    if (positive) {
+                        addFace(data, color, x1, y1, zPlane, x2, y1, zPlane, x2, y2, zPlane, x1, y2, zPlane);
+                    } else {
+                        addFace(data, color, x2, y1, zPlane, x1, y1, zPlane, x1, y2, zPlane, x2, y2, zPlane);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void meshYZ(List<Float> data, World world, Chunk chunk,
+            int baseX, int baseY, int baseZ, boolean positive) {
+        for (int x = 0; x < Chunk.SIZE; x++) {
+            boolean[][] visited = new boolean[Chunk.SIZE][Chunk.SIZE]; // [y][z]
+            for (int z = 0; z < Chunk.SIZE; z++) {
+                for (int y = 0; y < Chunk.SIZE; y++) {
+                    if (visited[y][z]) {
+                        continue;
+                    }
+                    BlockType type = chunk.getBlock(x, y, z);
+                    int nx = baseX + x + (positive ? 1 : -1);
+                    int ny = baseY + y;
+                    int nz = baseZ + z;
+                    if (type == BlockType.AIR || !isAir(world, nx, ny, nz)) {
+                        visited[y][z] = true;
+                        continue;
+                    }
+
+                    int width = 1;
+                    while (y + width < Chunk.SIZE && !visited[y + width][z]) {
+                        BlockType t = chunk.getBlock(x, y + width, z);
+                        if (t != type || !isAir(world, nx, baseY + y + width, nz)) {
+                            break;
+                        }
+                        width++;
+                    }
+
+                    int height = 1;
+                    outer: while (z + height < Chunk.SIZE) {
+                        for (int w = 0; w < width; w++) {
+                            if (visited[y + w][z + height]) {
+                                break outer;
+                            }
+                            BlockType t = chunk.getBlock(x, y + w, z + height);
+                            if (t != type || !isAir(world, nx, baseY + y + w, baseZ + z + height)) {
+                                break outer;
+                            }
+                        }
+                        height++;
+                    }
+
+                    for (int dz = 0; dz < height; dz++) {
+                        for (int dy = 0; dy < width; dy++) {
+                            visited[y + dy][z + dz] = true;
+                        }
+                    }
+
+                    float[] color = shade(colorFor(type), 0.7f);
+                    float xPlane = baseX + x + (positive ? 1 : 0);
+                    float y1 = baseY + y;
+                    float y2 = baseY + y + width;
+                    float z1 = baseZ + z;
+                    float z2 = baseZ + z + height;
+                    if (positive) {
+                        addFace(data, color, xPlane, y1, z2, xPlane, y1, z1, xPlane, y2, z1, xPlane, y2, z2);
+                    } else {
+                        addFace(data, color, xPlane, y1, z1, xPlane, y1, z2, xPlane, y2, z2, xPlane, y2, z1);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void meshXZ(List<Float> data, World world, Chunk chunk,
+            int baseX, int baseY, int baseZ, boolean positive) {
+        float shadeFactor = positive ? 1.0f : 0.5f;
+        for (int y = 0; y < Chunk.SIZE; y++) {
+            boolean[][] visited = new boolean[Chunk.SIZE][Chunk.SIZE]; // [x][z]
+            for (int z = 0; z < Chunk.SIZE; z++) {
+                for (int x = 0; x < Chunk.SIZE; x++) {
+                    if (visited[x][z]) {
+                        continue;
+                    }
+                    BlockType type = chunk.getBlock(x, y, z);
+                    int nx = baseX + x;
+                    int ny = baseY + y + (positive ? 1 : -1);
+                    int nz = baseZ + z;
+                    if (type == BlockType.AIR || !isAir(world, nx, ny, nz)) {
+                        visited[x][z] = true;
+                        continue;
+                    }
+
+                    int width = 1;
+                    while (x + width < Chunk.SIZE && !visited[x + width][z]) {
+                        BlockType t = chunk.getBlock(x + width, y, z);
+                        if (t != type || !isAir(world, baseX + x + width, ny, nz)) {
+                            break;
+                        }
+                        width++;
+                    }
+
+                    int height = 1;
+                    outer: while (z + height < Chunk.SIZE) {
+                        for (int w = 0; w < width; w++) {
+                            if (visited[x + w][z + height]) {
+                                break outer;
+                            }
+                            BlockType t = chunk.getBlock(x + w, y, z + height);
+                            if (t != type || !isAir(world, baseX + x + w, ny, baseZ + z + height)) {
+                                break outer;
+                            }
+                        }
+                        height++;
+                    }
+
+                    for (int dz = 0; dz < height; dz++) {
+                        for (int dx = 0; dx < width; dx++) {
+                            visited[x + dx][z + dz] = true;
+                        }
+                    }
+
+                    float[] color = shade(colorFor(type), shadeFactor);
+                    float x1 = baseX + x;
+                    float x2 = baseX + x + width;
+                    float z1 = baseZ + z;
+                    float z2 = baseZ + z + height;
+                    float yPlane = baseY + y + (positive ? 1 : 0);
+                    if (positive) {
+                        addFace(data, color, x1, yPlane, z2, x2, yPlane, z2, x2, yPlane, z1, x1, yPlane, z1);
+                    } else {
+                        addFace(data, color, x1, yPlane, z1, x2, yPlane, z1, x2, yPlane, z2, x1, yPlane, z2);
+                    }
+                }
+            }
+        }
     }
 
     private static void addFace(List<Float> data, float[] color,
