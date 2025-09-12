@@ -4,6 +4,9 @@ import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.system.MemoryUtil.NULL;
 
+import java.nio.FloatBuffer;
+
+import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.Callbacks;
 import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.opengl.GL;
@@ -26,6 +29,10 @@ public class WorldRenderer {
     private long window;
     private double lastMouseX;
     private double lastMouseY;
+
+    /** View frustum planes computed each frame. Each plane is stored as [A,B,C,D]. */
+    private final float[][] frustum = new float[6][4];
+    // TODO: Track visible neighbors for occlusion culling.
 
     public WorldRenderer(World world, Player player) {
         this.world = world;
@@ -89,6 +96,7 @@ public class WorldRenderer {
             glRotatef((float) Math.toDegrees(-player.getYaw()), 0f, 1f, 0f);
             glTranslatef((float) -player.getX(), (float) -player.getY(), (float) -player.getZ());
 
+            updateFrustum();
             renderBlocks();
 
             glfwSwapBuffers(window);
@@ -108,6 +116,10 @@ public class WorldRenderer {
                 int baseY = cy * Chunk.SIZE;
                 for (int cz = playerChunkZ - radius; cz <= playerChunkZ + radius; cz++) {
                     int baseZ = cz * Chunk.SIZE;
+                    if (!boxInFrustum(baseX, baseY, baseZ,
+                            baseX + Chunk.SIZE, baseY + Chunk.SIZE, baseZ + Chunk.SIZE)) {
+                        continue;
+                    }
                     Chunk chunk = world.getChunk(cx, cy, cz);
                     if (chunk.isDirty() || chunk.getMesh() == null) {
                         ChunkMesh old = chunk.getMesh();
@@ -123,6 +135,109 @@ public class WorldRenderer {
                 }
             }
         }
+    }
+
+    /** Extracts the six view frustum planes from the current projection and modelview matrices. */
+    private void updateFrustum() {
+        FloatBuffer proj = BufferUtils.createFloatBuffer(16);
+        FloatBuffer modl = BufferUtils.createFloatBuffer(16);
+        glGetFloatv(GL_PROJECTION_MATRIX, proj);
+        glGetFloatv(GL_MODELVIEW_MATRIX, modl);
+        proj.rewind();
+        modl.rewind();
+        float[] p = new float[16];
+        float[] m = new float[16];
+        proj.get(p);
+        modl.get(m);
+
+        float[] clip = new float[16];
+        clip[0] = m[0] * p[0] + m[1] * p[4] + m[2] * p[8] + m[3] * p[12];
+        clip[1] = m[0] * p[1] + m[1] * p[5] + m[2] * p[9] + m[3] * p[13];
+        clip[2] = m[0] * p[2] + m[1] * p[6] + m[2] * p[10] + m[3] * p[14];
+        clip[3] = m[0] * p[3] + m[1] * p[7] + m[2] * p[11] + m[3] * p[15];
+
+        clip[4] = m[4] * p[0] + m[5] * p[4] + m[6] * p[8] + m[7] * p[12];
+        clip[5] = m[4] * p[1] + m[5] * p[5] + m[6] * p[9] + m[7] * p[13];
+        clip[6] = m[4] * p[2] + m[5] * p[6] + m[6] * p[10] + m[7] * p[14];
+        clip[7] = m[4] * p[3] + m[5] * p[7] + m[6] * p[11] + m[7] * p[15];
+
+        clip[8] = m[8] * p[0] + m[9] * p[4] + m[10] * p[8] + m[11] * p[12];
+        clip[9] = m[8] * p[1] + m[9] * p[5] + m[10] * p[9] + m[11] * p[13];
+        clip[10] = m[8] * p[2] + m[9] * p[6] + m[10] * p[10] + m[11] * p[14];
+        clip[11] = m[8] * p[3] + m[9] * p[7] + m[10] * p[11] + m[11] * p[15];
+
+        clip[12] = m[12] * p[0] + m[13] * p[4] + m[14] * p[8] + m[15] * p[12];
+        clip[13] = m[12] * p[1] + m[13] * p[5] + m[14] * p[9] + m[15] * p[13];
+        clip[14] = m[12] * p[2] + m[13] * p[6] + m[14] * p[10] + m[15] * p[14];
+        clip[15] = m[12] * p[3] + m[13] * p[7] + m[14] * p[11] + m[15] * p[15];
+
+        // Right
+        frustum[0][0] = clip[3] - clip[0];
+        frustum[0][1] = clip[7] - clip[4];
+        frustum[0][2] = clip[11] - clip[8];
+        frustum[0][3] = clip[15] - clip[12];
+        normalizePlane(0);
+        // Left
+        frustum[1][0] = clip[3] + clip[0];
+        frustum[1][1] = clip[7] + clip[4];
+        frustum[1][2] = clip[11] + clip[8];
+        frustum[1][3] = clip[15] + clip[12];
+        normalizePlane(1);
+        // Bottom
+        frustum[2][0] = clip[3] + clip[1];
+        frustum[2][1] = clip[7] + clip[5];
+        frustum[2][2] = clip[11] + clip[9];
+        frustum[2][3] = clip[15] + clip[13];
+        normalizePlane(2);
+        // Top
+        frustum[3][0] = clip[3] - clip[1];
+        frustum[3][1] = clip[7] - clip[5];
+        frustum[3][2] = clip[11] - clip[9];
+        frustum[3][3] = clip[15] - clip[13];
+        normalizePlane(3);
+        // Far
+        frustum[4][0] = clip[3] - clip[2];
+        frustum[4][1] = clip[7] - clip[6];
+        frustum[4][2] = clip[11] - clip[10];
+        frustum[4][3] = clip[15] - clip[14];
+        normalizePlane(4);
+        // Near
+        frustum[5][0] = clip[3] + clip[2];
+        frustum[5][1] = clip[7] + clip[6];
+        frustum[5][2] = clip[11] + clip[10];
+        frustum[5][3] = clip[15] + clip[14];
+        normalizePlane(5);
+    }
+
+    private void normalizePlane(int i) {
+        float a = frustum[i][0];
+        float b = frustum[i][1];
+        float c = frustum[i][2];
+        float t = (float) Math.sqrt(a * a + b * b + c * c);
+        frustum[i][0] /= t;
+        frustum[i][1] /= t;
+        frustum[i][2] /= t;
+        frustum[i][3] /= t;
+    }
+
+    private boolean boxInFrustum(float x1, float y1, float z1, float x2, float y2, float z2) {
+        for (int i = 0; i < 6; i++) {
+            float a = frustum[i][0];
+            float b = frustum[i][1];
+            float c = frustum[i][2];
+            float d = frustum[i][3];
+            if (a * x1 + b * y1 + c * z1 + d > 0 &&
+                a * x2 + b * y1 + c * z1 + d > 0 &&
+                a * x1 + b * y2 + c * z1 + d > 0 &&
+                a * x2 + b * y2 + c * z1 + d > 0 &&
+                a * x1 + b * y1 + c * z2 + d > 0 &&
+                a * x2 + b * y1 + c * z2 + d > 0 &&
+                a * x1 + b * y2 + c * z2 + d > 0 &&
+                a * x2 + b * y2 + c * z2 + d > 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void handleKey(long window, int key, int scancode, int action, int mods) {
