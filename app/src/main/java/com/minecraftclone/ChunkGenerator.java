@@ -52,35 +52,52 @@ public class ChunkGenerator {
      */
     public Chunk generate(World world, int cx, int cy, int cz, Chunk chunk) {
         for (int x = 0; x < Chunk.SIZE; x++) {
-            for (int y = 0; y < Chunk.SIZE; y++) {
-                for (int z = 0; z < Chunk.SIZE; z++) {
-                    int wx = cx * Chunk.SIZE + x;
+            for (int z = 0; z < Chunk.SIZE; z++) {
+                int wx = cx * Chunk.SIZE + x;
+                int wz = cz * Chunk.SIZE + z;
+
+                // Base terrain height from 2D noise.
+                double surface = heightNoise.noise(wx * baseFrequency, wz * baseFrequency) * baseAmplitude + baseHeight;
+
+                int depth = -1; // Tracks distance below the surface for dirt placement.
+                for (int y = Chunk.SIZE - 1; y >= 0; y--) {
                     int wy = cy * Chunk.SIZE + y;
-                    int wz = cz * Chunk.SIZE + z;
 
-                    // Base terrain height from 2D noise.
-                    double surface = heightNoise.noise(wx * baseFrequency, wz * baseFrequency) * baseAmplitude + baseHeight;
-                    int ground = (int) Math.floor(surface);
-
-                    // Additional 3D displacement for cliffs, overhangs and floating islands.
+                    // 3D displacement for cliffs, overhangs and floating islands.
                     double displacement = detailNoise.noise(wx * detailFrequency, wy * detailFrequency, wz * detailFrequency)
                             * detailAmplitude;
-
                     double density = displacement + (surface - wy);
+
                     if (density > 0) {
-                        BlockType type = BlockType.STONE;
-                        if (wy <= ground && wy >= ground - 3) {
-                            type = (wy == ground) ? BlockType.GRASS : BlockType.DIRT;
+                        // Evaluate density one block above to determine if this is an exposed surface.
+                        double displacementAbove = detailNoise.noise(wx * detailFrequency, (wy + 1) * detailFrequency,
+                                wz * detailFrequency) * detailAmplitude;
+                        double densityAbove = displacementAbove + (surface - (wy + 1));
+
+                        BlockType type;
+                        if (densityAbove <= 0) {
+                            depth = 0;
+                            type = BlockType.GRASS;
+                        } else if (depth >= 0 && depth < 3) {
+                            depth++;
+                            type = BlockType.DIRT;
+                        } else {
+                            depth = depth < 0 ? 0 : depth + 1;
+                            type = BlockType.STONE;
                         }
 
                         // Carve out caves using a separate noise field.
                         double cave = caveNoise.noise(wx * caveFrequency, wy * caveFrequency, wz * caveFrequency);
                         if (cave > caveThreshold) {
-                            type = BlockType.AIR;
+                            chunk.setBlock(x, y, z, BlockType.AIR);
+                            // Reset depth so surfaces beneath a cave can receive grass again.
+                            depth = -1;
+                        } else {
+                            chunk.setBlock(x, y, z, type);
                         }
-                        chunk.setBlock(x, y, z, type);
                     } else {
                         chunk.setBlock(x, y, z, BlockType.AIR);
+                        depth = -1;
                     }
                 }
             }
