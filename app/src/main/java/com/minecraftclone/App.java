@@ -19,12 +19,19 @@ public class App {
 
         World world = new World();
 
-        // Generate a single chunk using 3D noise terrain.
+        // Generate a grid of chunks using 3D noise terrain.
         ChunkGenerator generator = new ChunkGenerator(seed);
-        generator.generate(world, 0, 0, 0);
+        for (int cx = 0; cx < 16; cx++) {
+            for (int cy = 0; cy < 16; cy++) {
+                for (int cz = 0; cz < 16; cz++) {
+                    generator.generate(world, cx, cy, cz);
+                }
+            }
+        }
 
-        int spawnX = Chunk.SIZE / 2;
-        int spawnZ = Chunk.SIZE / 2;
+        int centerChunk = 16 / 2;
+        int spawnX = centerChunk * Chunk.SIZE + Chunk.SIZE / 2;
+        int spawnZ = centerChunk * Chunk.SIZE + Chunk.SIZE / 2;
         int surface = generator.findSurfaceY(world, spawnX, spawnZ);
         int spawnY = surface >= 0 ? surface + 1 : Chunk.SIZE;
         Player player = new Player(spawnX, spawnY, spawnZ);
