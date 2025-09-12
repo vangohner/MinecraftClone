@@ -182,10 +182,10 @@ public class WorldRenderer {
             return;
         }
         switch (key) {
-            case GLFW_KEY_LEFT -> player.rotate(-0.1);
-            case GLFW_KEY_RIGHT -> player.rotate(0.1);
-            case GLFW_KEY_UP -> player.pitch(-0.05);
-            case GLFW_KEY_DOWN -> player.pitch(0.05);
+            case GLFW_KEY_LEFT -> player.rotate(0.1);
+            case GLFW_KEY_RIGHT -> player.rotate(-0.1);
+            case GLFW_KEY_UP -> player.pitch(0.05);
+            case GLFW_KEY_DOWN -> player.pitch(-0.05);
             case GLFW_KEY_ESCAPE -> glfwSetWindowShouldClose(window, true);
             default -> {}
         }
@@ -226,7 +226,7 @@ public class WorldRenderer {
     private void moveRelative(double right, double forward) {
         double yaw = player.getYaw();
         double dx = (forward * Math.sin(yaw) + right * Math.cos(yaw)) * MOVE_SPEED;
-        double dz = (forward * Math.cos(yaw) - right * Math.sin(yaw)) * MOVE_SPEED;
+        double dz = (-forward * Math.cos(yaw) + right * Math.sin(yaw)) * MOVE_SPEED;
         player.move(dx, 0, dz);
     }
 
@@ -239,8 +239,8 @@ public class WorldRenderer {
         double dy = ypos - lastMouseY;
         lastMouseX = xpos;
         lastMouseY = ypos;
-        player.rotate(dx * MOUSE_SENSITIVITY);
-        player.pitch(dy * MOUSE_SENSITIVITY);
+        player.rotate(-dx * MOUSE_SENSITIVITY);
+        player.pitch(-dy * MOUSE_SENSITIVITY);
     }
 
     private void setPerspective(float fov, float aspect, float near, float far) {
