@@ -7,18 +7,19 @@ import java.awt.Graphics2D;
 import java.awt.Polygon;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 import javax.swing.JPanel;
 
 /**
- * Very simple isometric renderer that draws blocks in a Swing window.
- * This is not a full 3D engine but provides a basic 3D-like view using
- * isometric projection so the world can be visualised outside of the
- * console.
+ * Simple first-person renderer using a very naive perspective projection.
+ * This is not a real 3D engine but provides a basic first-person view so
+ * the player can look and move around the world similar to Minecraft.
  */
 public class WorldRenderer extends JPanel implements KeyListener {
-    private static final int TILE_WIDTH = 40;
-    private static final int TILE_HEIGHT = 20;
+    private static final double FOV = Math.toRadians(70);
 
     private final World world;
     private final Player player;
@@ -37,67 +38,106 @@ public class WorldRenderer extends JPanel implements KeyListener {
         super.paintComponent(g);
         Graphics2D g2d = (Graphics2D) g;
 
-        int offsetX = getWidth() / 2;
-        int offsetY = getHeight() / 2;
-
+        int width = getWidth();
+        int height = getHeight();
         double px = player.getX();
         double py = player.getY();
         double pz = player.getZ();
+        double yaw = player.getYaw();
+        double cosYaw = Math.cos(yaw);
+        double sinYaw = Math.sin(yaw);
+        double scale = width / (2 * Math.tan(FOV / 2));
 
+        List<Face> faces = new ArrayList<>();
         Chunk chunk = world.getChunk(0, 0, 0);
         for (int y = 0; y < Chunk.SIZE; y++) {
             for (int x = 0; x < Chunk.SIZE; x++) {
                 for (int z = 0; z < Chunk.SIZE; z++) {
                     BlockType type = chunk.getBlock(x, y, z);
                     if (type != BlockType.AIR) {
-                        drawBlock(g2d, type, x, y, z, px, py, pz, offsetX, offsetY);
+                        addBlockFaces(faces, type, x, y, z, px, py, pz, cosYaw, sinYaw, scale, width / 2, height / 2);
                     }
                 }
             }
         }
+
+        faces.sort(Comparator.comparingDouble(f -> -f.depth));
+        for (Face f : faces) {
+            g2d.setColor(f.color);
+            g2d.fillPolygon(f.poly);
+            g2d.setColor(Color.DARK_GRAY);
+            g2d.drawPolygon(f.poly);
+        }
     }
 
-    private void drawBlock(Graphics2D g2d, BlockType type, int x, int y, int z,
-            double px, double py, double pz, int offsetX, int offsetY) {
-        double relX = x - px;
-        double relY = y - py;
-        double relZ = z - pz;
+    private void addBlockFaces(List<Face> faces, BlockType type, int x, int y, int z,
+            double px, double py, double pz, double cosYaw, double sinYaw, double scale, int offsetX, int offsetY) {
+        // Vertices for each face of the unit cube
+        double[][][] faceVerts = {
+                { {0, 0, 1}, {1, 0, 1}, {1, 1, 1}, {0, 1, 1} }, // front
+                { {1, 0, 0}, {0, 0, 0}, {0, 1, 0}, {1, 1, 0} }, // back
+                { {0, 0, 0}, {0, 0, 1}, {0, 1, 1}, {0, 1, 0} }, // left
+                { {1, 0, 1}, {1, 0, 0}, {1, 1, 0}, {1, 1, 1} }, // right
+                { {0, 1, 1}, {1, 1, 1}, {1, 1, 0}, {0, 1, 0} }, // top
+                { {0, 0, 0}, {1, 0, 0}, {1, 0, 1}, {0, 0, 1} }  // bottom
+        };
+        double[][] normals = {
+                {0, 0, 1},
+                {0, 0, -1},
+                {-1, 0, 0},
+                {1, 0, 0},
+                {0, 1, 0},
+                {0, -1, 0}
+        };
 
-        int sx = (int) ((relX - relZ) * TILE_WIDTH / 2) + offsetX;
-        int sy = (int) ((relX + relZ) * TILE_HEIGHT / 2 - relY * TILE_HEIGHT) + offsetY;
+        Color base = colorFor(type);
+        for (int i = 0; i < faceVerts.length; i++) {
+            double[] n = normals[i];
+            double rnx = n[0] * cosYaw - n[2] * sinYaw;
+            double rnz = n[0] * sinYaw + n[2] * cosYaw;
+            double rny = n[1];
+            if (rnz <= 0) {
+                continue; // facing away
+            }
+            Polygon poly = new Polygon();
+            double depth = 0;
+            boolean visible = true;
+            for (double[] v : faceVerts[i]) {
+                double wx = x + v[0];
+                double wy = y + v[1];
+                double wz = z + v[2];
 
-        // Top face
-        Polygon top = new Polygon();
-        top.addPoint(sx, sy);
-        top.addPoint(sx + TILE_WIDTH / 2, sy + TILE_HEIGHT / 2);
-        top.addPoint(sx, sy + TILE_HEIGHT);
-        top.addPoint(sx - TILE_WIDTH / 2, sy + TILE_HEIGHT / 2);
-        g2d.setColor(colorFor(type));
-        g2d.fillPolygon(top);
-        g2d.setColor(Color.DARK_GRAY);
-        g2d.drawPolygon(top);
+                double dx = wx - px;
+                double dy = wy - py;
+                double dz = wz - pz;
+                double rx = dx * cosYaw - dz * sinYaw;
+                double rz = dx * sinYaw + dz * cosYaw;
+                double ry = dy;
+                if (rz <= 0.1) {
+                    visible = false;
+                    break;
+                }
+                int sx = (int) (rx * scale / rz) + offsetX;
+                int sy = (int) (-ry * scale / rz) + offsetY;
+                poly.addPoint(sx, sy);
+                depth += rz;
+            }
+            if (!visible) {
+                continue;
+            }
+            depth /= 4.0;
+            double brightness = 0.6 + 0.4 * rnz + 0.2 * Math.max(0, rny);
+            Color shaded = shade(base, brightness);
+            faces.add(new Face(poly, shaded, depth));
+        }
+    }
 
-        // Left face
-        Polygon left = new Polygon();
-        left.addPoint(sx - TILE_WIDTH / 2, sy + TILE_HEIGHT / 2);
-        left.addPoint(sx, sy + TILE_HEIGHT);
-        left.addPoint(sx, sy + TILE_HEIGHT * 2);
-        left.addPoint(sx - TILE_WIDTH / 2, sy + TILE_HEIGHT + TILE_HEIGHT / 2);
-        g2d.setColor(colorFor(type).darker());
-        g2d.fillPolygon(left);
-        g2d.setColor(Color.DARK_GRAY);
-        g2d.drawPolygon(left);
-
-        // Right face
-        Polygon right = new Polygon();
-        right.addPoint(sx + TILE_WIDTH / 2, sy + TILE_HEIGHT / 2);
-        right.addPoint(sx, sy + TILE_HEIGHT);
-        right.addPoint(sx, sy + TILE_HEIGHT * 2);
-        right.addPoint(sx + TILE_WIDTH / 2, sy + TILE_HEIGHT + TILE_HEIGHT / 2);
-        g2d.setColor(colorFor(type).darker().darker());
-        g2d.fillPolygon(right);
-        g2d.setColor(Color.DARK_GRAY);
-        g2d.drawPolygon(right);
+    private Color shade(Color color, double factor) {
+        factor = Math.max(0, Math.min(1, factor));
+        int r = (int) (color.getRed() * factor);
+        int g = (int) (color.getGreen() * factor);
+        int b = (int) (color.getBlue() * factor);
+        return new Color(r, g, b);
     }
 
     private Color colorFor(BlockType type) {
@@ -111,18 +151,28 @@ public class WorldRenderer extends JPanel implements KeyListener {
 
     @Override
     public void keyPressed(KeyEvent e) {
-        double dx = 0;
-        double dz = 0;
         switch (e.getKeyCode()) {
-            case KeyEvent.VK_W, KeyEvent.VK_UP -> dz = -1;
-            case KeyEvent.VK_S, KeyEvent.VK_DOWN -> dz = 1;
-            case KeyEvent.VK_A, KeyEvent.VK_LEFT -> dx = -1;
-            case KeyEvent.VK_D, KeyEvent.VK_RIGHT -> dx = 1;
+            case KeyEvent.VK_LEFT -> {
+                player.rotate(-0.1);
+                repaint();
+            }
+            case KeyEvent.VK_RIGHT -> {
+                player.rotate(0.1);
+                repaint();
+            }
+            case KeyEvent.VK_W, KeyEvent.VK_UP -> moveRelative(0, 1);
+            case KeyEvent.VK_S, KeyEvent.VK_DOWN -> moveRelative(0, -1);
+            case KeyEvent.VK_A -> moveRelative(-1, 0);
+            case KeyEvent.VK_D -> moveRelative(1, 0);
             default -> {
-                return;
             }
         }
+    }
 
+    private void moveRelative(double right, double forward) {
+        double yaw = player.getYaw();
+        double dx = forward * Math.sin(yaw) + right * Math.cos(yaw);
+        double dz = forward * Math.cos(yaw) - right * Math.sin(yaw);
         double newX = player.getX() + dx;
         double newZ = player.getZ() + dz;
         if (newX >= 0 && newX < Chunk.SIZE && newZ >= 0 && newZ < Chunk.SIZE) {
@@ -139,6 +189,18 @@ public class WorldRenderer extends JPanel implements KeyListener {
     @Override
     public void keyTyped(KeyEvent e) {
         // no-op
+    }
+
+    private static class Face {
+        final Polygon poly;
+        final Color color;
+        final double depth;
+
+        Face(Polygon poly, Color color, double depth) {
+            this.poly = poly;
+            this.color = color;
+            this.depth = depth;
+        }
     }
 }
 
