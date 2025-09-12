@@ -226,14 +226,14 @@ public class WorldRenderer {
             float b = frustum[i][1];
             float c = frustum[i][2];
             float d = frustum[i][3];
-            if (a * x1 + b * y1 + c * z1 + d > 0 &&
-                a * x2 + b * y1 + c * z1 + d > 0 &&
-                a * x1 + b * y2 + c * z1 + d > 0 &&
-                a * x2 + b * y2 + c * z1 + d > 0 &&
-                a * x1 + b * y1 + c * z2 + d > 0 &&
-                a * x2 + b * y1 + c * z2 + d > 0 &&
-                a * x1 + b * y2 + c * z2 + d > 0 &&
-                a * x2 + b * y2 + c * z2 + d > 0) {
+            if (a * x1 + b * y1 + c * z1 + d < 0 &&
+                a * x2 + b * y1 + c * z1 + d < 0 &&
+                a * x1 + b * y2 + c * z1 + d < 0 &&
+                a * x2 + b * y2 + c * z1 + d < 0 &&
+                a * x1 + b * y1 + c * z2 + d < 0 &&
+                a * x2 + b * y1 + c * z2 + d < 0 &&
+                a * x1 + b * y2 + c * z2 + d < 0 &&
+                a * x2 + b * y2 + c * z2 + d < 0) {
                 return false;
             }
         }
