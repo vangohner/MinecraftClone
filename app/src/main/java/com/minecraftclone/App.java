@@ -17,6 +17,15 @@ public class App {
         }
         System.out.println("Using seed: " + seed);
 
+        int renderDistance = 4;
+        if (args.length > 1) {
+            try {
+                renderDistance = Integer.parseInt(args[1]);
+            } catch (NumberFormatException e) {
+                System.err.println("Invalid render distance '" + args[1] + "', using default " + renderDistance);
+            }
+        }
+
         ChunkGenerator generator = new ChunkGenerator(seed);
         World world = new World(generator);
 
@@ -35,7 +44,7 @@ public class App {
         System.out.println("Player starting at " + player);
 
         // Launch the LWJGL-based renderer.
-        WorldRenderer renderer = new WorldRenderer(world, player);
+        WorldRenderer renderer = new WorldRenderer(world, player, renderDistance);
         renderer.run();
         world.shutdown();
     }

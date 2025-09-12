@@ -14,10 +14,16 @@ This repository uses the Gradle wrapper. To launch the demo straight from the so
 ./gradlew run
 ```
 
-To start the world with a specific seed pass it as an argument:
+To start the world with a specific seed pass it as the first argument:
 
 ```
 ./gradlew run --args="12345"
+```
+
+You can optionally specify the initial render distance (in chunks) as the second argument:
+
+```
+./gradlew run --args="12345 8"
 ```
 
 On Windows use `gradlew.bat run` instead.

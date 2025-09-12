@@ -22,7 +22,7 @@ public class WorldRenderer {
     private static final double MOVE_SPEED = 0.1;
     private static final double MOUSE_SENSITIVITY = 0.002;
     /** Number of chunks to render in each direction from the player. */
-    private static final int RENDER_DISTANCE = 4;
+    private int renderDistance;
 
     private final World world;
     private final Player player;
@@ -34,9 +34,10 @@ public class WorldRenderer {
     private final float[][] frustum = new float[6][4];
     // TODO: Track visible neighbors for occlusion culling.
 
-    public WorldRenderer(World world, Player player) {
+    public WorldRenderer(World world, Player player, int renderDistance) {
         this.world = world;
         this.player = player;
+        this.renderDistance = renderDistance;
     }
 
     /** Launches the rendering loop. */
@@ -75,13 +76,7 @@ public class WorldRenderer {
         glEnable(GL_DEPTH_TEST);
         glClearColor(0.53f, 0.81f, 1f, 0f);
 
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        float aspect = (float) WIDTH / HEIGHT;
-        // Extend the far plane so distant chunks remain visible when using a
-        // larger render distance.
-        setPerspective(70f, aspect, 0.1f, 500f);
-        glMatrixMode(GL_MODELVIEW);
+        updateProjection();
     }
 
     private void loop() {
@@ -108,7 +103,7 @@ public class WorldRenderer {
         int playerChunkX = (int) Math.floor(player.getX() / Chunk.SIZE);
         int playerChunkY = (int) Math.floor(player.getY() / Chunk.SIZE);
         int playerChunkZ = (int) Math.floor(player.getZ() / Chunk.SIZE);
-        int radius = RENDER_DISTANCE;
+        int radius = renderDistance;
 
         for (int cx = playerChunkX - radius; cx <= playerChunkX + radius; cx++) {
             int baseX = cx * Chunk.SIZE;
@@ -253,6 +248,8 @@ public class WorldRenderer {
             case GLFW_KEY_RIGHT -> player.rotate(-0.1);
             case GLFW_KEY_UP -> player.pitch(0.05);
             case GLFW_KEY_DOWN -> player.pitch(-0.05);
+            case GLFW_KEY_PAGE_UP -> adjustRenderDistance(1);
+            case GLFW_KEY_PAGE_DOWN -> adjustRenderDistance(-1);
             case GLFW_KEY_ESCAPE -> glfwSetWindowShouldClose(window, true);
             default -> {}
         }
@@ -308,6 +305,21 @@ public class WorldRenderer {
         lastMouseY = ypos;
         player.rotate(-dx * MOUSE_SENSITIVITY);
         player.pitch(-dy * MOUSE_SENSITIVITY);
+    }
+
+    private void adjustRenderDistance(int delta) {
+        renderDistance = Math.max(1, renderDistance + delta);
+        System.out.println("Render distance: " + renderDistance);
+        updateProjection();
+    }
+
+    private void updateProjection() {
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        float aspect = (float) WIDTH / HEIGHT;
+        float far = (renderDistance + 2) * Chunk.SIZE * (float) Math.sqrt(3);
+        setPerspective(70f, aspect, 0.1f, far);
+        glMatrixMode(GL_MODELVIEW);
     }
 
     private void setPerspective(float fov, float aspect, float near, float far) {
