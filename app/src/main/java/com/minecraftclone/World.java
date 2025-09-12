@@ -33,6 +33,7 @@ public class World {
             if (generator != null) {
                 generator.generate(this, p.x(), p.y(), p.z(), chunk);
             }
+            markNeighborsDirty(p.x(), p.y(), p.z());
             return chunk;
         });
     }
@@ -102,5 +103,15 @@ public class World {
 
     private int mod(int c) {
         return Math.floorMod(c, Chunk.SIZE);
+    }
+
+    private void markNeighborsDirty(int cx, int cy, int cz) {
+        int[][] dirs = { {1,0,0}, {-1,0,0}, {0,1,0}, {0,-1,0}, {0,0,1}, {0,0,-1} };
+        for (int[] d : dirs) {
+            Chunk neighbor = getChunkIfLoaded(cx + d[0], cy + d[1], cz + d[2]);
+            if (neighbor != null) {
+                neighbor.markDirty();
+            }
+        }
     }
 }

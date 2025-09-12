@@ -44,6 +44,11 @@ public class Chunk {
         this.dirty = false;
     }
 
+    /** Marks the chunk as needing its mesh rebuilt. */
+    public void markDirty() {
+        this.dirty = true;
+    }
+
     private void check(int x, int y, int z) {
         if (x < 0 || x >= SIZE || y < 0 || y >= SIZE || z < 0 || z >= SIZE) {
             throw new IndexOutOfBoundsException("Block coordinates out of range");

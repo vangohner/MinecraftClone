@@ -269,7 +269,18 @@ public class ChunkMesh {
     }
 
     private static boolean isAir(World world, int x, int y, int z) {
-        return world.getBlock(x, y, z) == BlockType.AIR;
+        int cx = Math.floorDiv(x, Chunk.SIZE);
+        int cy = Math.floorDiv(y, Chunk.SIZE);
+        int cz = Math.floorDiv(z, Chunk.SIZE);
+        Chunk chunk = world.getChunkIfLoaded(cx, cy, cz);
+        if (chunk == null) {
+            // Treat missing chunks as solid to avoid temporary seams.
+            return false;
+        }
+        int lx = Math.floorMod(x, Chunk.SIZE);
+        int ly = Math.floorMod(y, Chunk.SIZE);
+        int lz = Math.floorMod(z, Chunk.SIZE);
+        return chunk.getBlock(lx, ly, lz) == BlockType.AIR;
     }
 
     private static float[] colorFor(BlockType type) {

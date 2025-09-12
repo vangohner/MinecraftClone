@@ -60,36 +60,27 @@ public class ChunkGenerator {
 
                     // Base terrain height from 2D noise.
                     double surface = heightNoise.noise(wx * baseFrequency, wz * baseFrequency) * baseAmplitude + baseHeight;
+                    int ground = (int) Math.floor(surface);
 
                     // Additional 3D displacement for cliffs, overhangs and floating islands.
-                    double displacement = detailNoise.noise(wx * detailFrequency, wy * detailFrequency, wz * detailFrequency) * detailAmplitude;
+                    double displacement = detailNoise.noise(wx * detailFrequency, wy * detailFrequency, wz * detailFrequency)
+                            * detailAmplitude;
 
                     double density = displacement + (surface - wy);
                     if (density > 0) {
-                        chunk.setBlock(x, y, z, BlockType.STONE);
+                        BlockType type = BlockType.STONE;
+                        if (wy <= ground && wy >= ground - 3) {
+                            type = (wy == ground) ? BlockType.GRASS : BlockType.DIRT;
+                        }
 
                         // Carve out caves using a separate noise field.
                         double cave = caveNoise.noise(wx * caveFrequency, wy * caveFrequency, wz * caveFrequency);
                         if (cave > caveThreshold) {
-                            chunk.setBlock(x, y, z, BlockType.AIR);
+                            type = BlockType.AIR;
                         }
-                    }
-                }
-            }
-        }
-
-        // Convert topmost stone blocks into grass/dirt layers.
-        for (int x = 0; x < Chunk.SIZE; x++) {
-            for (int z = 0; z < Chunk.SIZE; z++) {
-                for (int y = Chunk.SIZE - 1; y >= 0; y--) {
-                    if (chunk.getBlock(x, y, z) == BlockType.STONE) {
-                        chunk.setBlock(x, y, z, BlockType.GRASS);
-                        for (int d = 1; d <= 3 && y - d >= 0; d++) {
-                            if (chunk.getBlock(x, y - d, z) == BlockType.STONE) {
-                                chunk.setBlock(x, y - d, z, BlockType.DIRT);
-                            }
-                        }
-                        break;
+                        chunk.setBlock(x, y, z, type);
+                    } else {
+                        chunk.setBlock(x, y, z, BlockType.AIR);
                     }
                 }
             }
