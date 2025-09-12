@@ -20,6 +20,18 @@ public class Player {
         this.z += dz;
     }
 
+    public double getX() {
+        return x;
+    }
+
+    public double getY() {
+        return y;
+    }
+
+    public double getZ() {
+        return z;
+    }
+
     @Override
     public String toString() {
         return "Player{" + "x=" + x + ", y=" + y + ", z=" + z + '}';
