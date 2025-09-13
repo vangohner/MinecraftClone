@@ -65,6 +65,8 @@ public class World {
                 if (generator != null) {
                     generator.generate(this, p.x(), p.y(), p.z(), chunk);
                 }
+                // persist newly generated chunk immediately
+                writeChunk(chunk, p.x(), p.y(), p.z());
             } else {
                 if (debug) {
                     System.out.println("Loaded chunk " + p.x() + "," + p.y() + "," + p.z());
@@ -152,6 +154,11 @@ public class World {
         if (chunk == null) {
             return;
         }
+        writeChunk(chunk, cx, cy, cz);
+    }
+
+    /** Writes the provided chunk data to disk. */
+    private void writeChunk(Chunk chunk, int cx, int cy, int cz) {
         try (DataOutputStream out = new DataOutputStream(Files.newOutputStream(chunkPath(cx, cy, cz)))) {
             for (int x = 0; x < Chunk.SIZE; x++) {
                 for (int y = 0; y < Chunk.SIZE; y++) {

@@ -48,8 +48,9 @@ java -jar app/build/libs/app.jar
 
 ## World Saving
 
-Generated chunks are stored as simple binary files inside the `world/` directory
-and are automatically loaded on startup and saved on shutdown.
+Generated chunks are immediately written as simple binary files inside the
+`world/` directory. They are reloaded on startup and all loaded chunks are saved
+again on shutdown to persist any changes.
 
 ## Debugging
 
