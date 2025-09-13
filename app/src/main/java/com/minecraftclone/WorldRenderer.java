@@ -99,6 +99,7 @@ public class WorldRenderer {
 
             updateFrustum();
             renderBlocks();
+            ChunkMesh.flushDeletes();
 
             glfwSwapBuffers(window);
             glfwPollEvents();
