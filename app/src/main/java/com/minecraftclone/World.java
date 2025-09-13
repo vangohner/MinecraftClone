@@ -5,6 +5,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
@@ -141,11 +142,24 @@ public class World {
         workers.shutdown();
     }
 
-    /** Saves all currently loaded chunks to disk. */
+    /** Saves all currently loaded chunks to disk with progress output. */
     public void saveAll() {
-        for (ChunkPos pos : chunks.keySet()) {
-            saveChunk(pos.x(), pos.y(), pos.z());
+        var positions = new ArrayList<>(chunks.keySet());
+        int total = positions.size();
+        if (total == 0) {
+            return;
         }
+        System.out.println("Saving " + total + " chunks...");
+        long start = System.nanoTime();
+        for (int i = 0; i < total; i++) {
+            ChunkPos pos = positions.get(i);
+            saveChunk(pos.x(), pos.y(), pos.z());
+            long elapsed = System.nanoTime() - start;
+            long avg = elapsed / (i + 1);
+            long eta = avg * (total - i - 1);
+            System.out.printf("Saved %d/%d chunks (ETA %.1fs)%n", i + 1, total, eta / 1_000_000_000.0);
+        }
+        System.out.println("Finished saving chunks.");
     }
 
     /** Saves a single chunk if it is loaded. */
