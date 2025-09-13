@@ -5,8 +5,9 @@ This project aims to build a Minecraft-like game from scratch in Java. The curre
 - Basic world data structures (`BlockType`, `Chunk`, `World`)
 - A simple `Player` class
 - A Swing window that renders a flat chunk in a minimal isometric view
-- An "amplified" terrain generator featuring continents, towering mountains,
-  floating islands and large cave networks
+- A terrain generator blending classic landscapes with "amplified" regions of
+  towering mountains, floating islands and large cave networks
+- New block types including sand, water, snow and ice
 
 ## Running
 

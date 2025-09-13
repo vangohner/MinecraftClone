@@ -20,6 +20,7 @@ public class ChunkGenerator {
     private final NoiseGenerator mountainNoise;
     private final NoiseGenerator islandNoise;
     private final NoiseGenerator monolithNoise;
+    private final NoiseGenerator regionNoise;
 
     private final double baseFrequency;
     private final double baseAmplitude;
@@ -43,6 +44,10 @@ public class ChunkGenerator {
     private final double monolithFrequency;
     private final double monolithAmplitude;
     private final double monolithThreshold = 0.8;
+    private final double regionFrequency;
+
+    private final int waterLevel = 0;
+    private final int snowLine = 80;
 
     public ChunkGenerator(long seed) {
         // Default values tuned for amplified terrain across vast vertical ranges.
@@ -57,6 +62,7 @@ public class ChunkGenerator {
         this.mountainNoise = new NoiseGenerator(seed + 4);
         this.islandNoise = new NoiseGenerator(seed + 5);
         this.monolithNoise = new NoiseGenerator(seed + 6);
+        this.regionNoise = new NoiseGenerator(seed + 7);
 
         this.baseFrequency = frequency;
         this.baseAmplitude = amplitude;
@@ -77,6 +83,7 @@ public class ChunkGenerator {
         this.islandAmplitude = amplitude / 2.0;
         this.monolithFrequency = frequency * 4.0;
         this.monolithAmplitude = amplitude * 0.75;
+        this.regionFrequency = frequency / 16.0;
     }
 
     /**
@@ -91,9 +98,14 @@ public class ChunkGenerator {
                 int wx = cx * Chunk.SIZE + x;
                 int wz = cz * Chunk.SIZE + z;
 
-                // Base terrain height from large-scale continent and mountain noise.
-                double continent = continentNoise.noise(wx * continentFrequency, wz * continentFrequency) * continentAmplitude;
-                double mountains = mountainNoise.noise(wx * mountainFrequency, wz * mountainFrequency) * mountainAmplitude;
+                double regionScale = (regionNoise.noise(wx * regionFrequency, wz * regionFrequency) + 1.0) / 2.0;
+
+                double contAmp = continentAmplitude * (0.3 + 0.7 * regionScale);
+                double mountAmp = mountainAmplitude * regionScale;
+                double detailAmp = detailAmplitude * (0.5 + 0.5 * regionScale);
+
+                double continent = continentNoise.noise(wx * continentFrequency, wz * continentFrequency) * contAmp;
+                double mountains = mountainNoise.noise(wx * mountainFrequency, wz * mountainFrequency) * mountAmp;
                 double surface = baseHeight + continent + mountains;
 
                 int depth = -1; // Tracks distance below the surface for dirt placement.
@@ -102,17 +114,17 @@ public class ChunkGenerator {
 
                     // 3D displacement for cliffs, overhangs and floating islands.
                     double displacement = detailNoise.noise(wx * detailFrequency, wy * detailFrequency, wz * detailFrequency)
-                            * detailAmplitude;
+                            * detailAmp;
                     double density = displacement + (surface - wy);
 
                     // Vertical monolith pillars jutting from the ground.
                     double monolith = monolithNoise.noise(wx * monolithFrequency, wz * monolithFrequency);
-                    if (monolith > monolithThreshold) {
-                        density += (monolith - monolithThreshold) * monolithAmplitude;
+                    if (regionScale > 0.6 && monolith > monolithThreshold) {
+                        density += (monolith - monolithThreshold) * monolithAmplitude * regionScale;
                     }
 
                     // Floating islands high above the surface.
-                    if (wy > surface + islandBaseHeight) {
+                    if (regionScale > 0.6 && wy > surface + islandBaseHeight) {
                         double island = islandNoise.noise(wx * islandFrequency, wy * islandFrequency, wz * islandFrequency)
                                 * islandAmplitude;
                         double islandDensity = island - (wy - (surface + islandBaseHeight));
@@ -123,17 +135,27 @@ public class ChunkGenerator {
 
                     if (density > 0) {
                         // Evaluate density one block above to determine if this is an exposed surface.
-                        double displacementAbove = detailNoise.noise(wx * detailFrequency, (wy + 1) * detailFrequency,
-                                wz * detailFrequency) * detailAmplitude;
+                          double displacementAbove = detailNoise.noise(wx * detailFrequency, (wy + 1) * detailFrequency,
+                                  wz * detailFrequency) * detailAmp;
                         double densityAbove = displacementAbove + (surface - (wy + 1));
 
                         BlockType type;
                         if (densityAbove <= 0) {
                             depth = 0;
-                            type = BlockType.GRASS;
+                            if (wy > snowLine) {
+                                type = BlockType.SNOW;
+                            } else if (wy <= waterLevel + 1) {
+                                type = BlockType.SAND;
+                            } else {
+                                type = BlockType.GRASS;
+                            }
                         } else if (depth >= 0 && depth < 3) {
                             depth++;
-                            type = BlockType.DIRT;
+                            if (wy > snowLine) {
+                                type = BlockType.ICE;
+                            } else {
+                                type = BlockType.DIRT;
+                            }
                         } else {
                             depth = depth < 0 ? 0 : depth + 1;
                             type = BlockType.STONE;
@@ -142,14 +164,22 @@ public class ChunkGenerator {
                         // Carve out caves using a separate noise field.
                         double cave = caveNoise.noise(wx * caveFrequency, wy * caveFrequency, wz * caveFrequency);
                         if (cave > caveThreshold) {
-                            chunk.setBlock(x, y, z, BlockType.AIR);
+                            if (wy <= waterLevel) {
+                                chunk.setBlock(x, y, z, BlockType.WATER);
+                            } else {
+                                chunk.setBlock(x, y, z, BlockType.AIR);
+                            }
                             // Reset depth so surfaces beneath a cave can receive grass again.
                             depth = -1;
                         } else {
                             chunk.setBlock(x, y, z, type);
                         }
                     } else {
-                        chunk.setBlock(x, y, z, BlockType.AIR);
+                        if (wy <= waterLevel) {
+                            chunk.setBlock(x, y, z, BlockType.WATER);
+                        } else {
+                            chunk.setBlock(x, y, z, BlockType.AIR);
+                        }
                         depth = -1;
                     }
                 }
