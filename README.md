@@ -46,4 +46,9 @@ To build a runnable JAR execute:
 java -jar app/build/libs/app.jar
 ```
 
+## World Saving
+
+Generated chunks are stored as simple binary files inside the `world/` directory
+and are automatically loaded on startup and saved on shutdown.
+
 This is only the first step toward a full clone. Future work will include richer rendering, input handling, world generation and more.

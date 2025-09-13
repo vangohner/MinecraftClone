@@ -1,5 +1,10 @@
 package com.minecraftclone;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
@@ -15,9 +20,20 @@ public class World {
     private final Set<ChunkPos> pending = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final ExecutorService workers = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
     private final ChunkGenerator generator;
+    private final Path saveDir;
 
     public World(ChunkGenerator generator) {
+        this(generator, Path.of("world"));
+    }
+
+    public World(ChunkGenerator generator, Path saveDir) {
         this.generator = generator;
+        this.saveDir = saveDir;
+        try {
+            Files.createDirectories(saveDir);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to create world directory", e);
+        }
     }
 
     /**
@@ -29,9 +45,12 @@ public class World {
     public Chunk getChunk(int cx, int cy, int cz) {
         ChunkPos pos = new ChunkPos(cx, cy, cz);
         return chunks.computeIfAbsent(pos, p -> {
-            Chunk chunk = new Chunk();
-            if (generator != null) {
-                generator.generate(this, p.x(), p.y(), p.z(), chunk);
+            Chunk chunk = loadChunk(p.x(), p.y(), p.z());
+            if (chunk == null) {
+                chunk = new Chunk();
+                if (generator != null) {
+                    generator.generate(this, p.x(), p.y(), p.z(), chunk);
+                }
             }
             markNeighborsDirty(p.x(), p.y(), p.z());
             return chunk;
@@ -94,7 +113,60 @@ public class World {
      * Stops the worker threads. Should be invoked on application shutdown.
      */
     public void shutdown() {
+        saveAll();
         workers.shutdown();
+    }
+
+    /** Saves all currently loaded chunks to disk. */
+    public void saveAll() {
+        for (ChunkPos pos : chunks.keySet()) {
+            saveChunk(pos.x(), pos.y(), pos.z());
+        }
+    }
+
+    /** Saves a single chunk if it is loaded. */
+    public void saveChunk(int cx, int cy, int cz) {
+        Chunk chunk = getChunkIfLoaded(cx, cy, cz);
+        if (chunk == null) {
+            return;
+        }
+        try (DataOutputStream out = new DataOutputStream(Files.newOutputStream(chunkPath(cx, cy, cz)))) {
+            for (int x = 0; x < Chunk.SIZE; x++) {
+                for (int y = 0; y < Chunk.SIZE; y++) {
+                    for (int z = 0; z < Chunk.SIZE; z++) {
+                        out.writeByte(chunk.getBlock(x, y, z).ordinal());
+                    }
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Failed to save chunk " + cx + "," + cy + "," + cz + ": " + e.getMessage());
+        }
+    }
+
+    private Chunk loadChunk(int cx, int cy, int cz) {
+        Path path = chunkPath(cx, cy, cz);
+        if (!Files.exists(path)) {
+            return null;
+        }
+        Chunk chunk = new Chunk();
+        try (DataInputStream in = new DataInputStream(Files.newInputStream(path))) {
+            for (int x = 0; x < Chunk.SIZE; x++) {
+                for (int y = 0; y < Chunk.SIZE; y++) {
+                    for (int z = 0; z < Chunk.SIZE; z++) {
+                        int ord = in.readUnsignedByte();
+                        chunk.setBlockUnchecked(x, y, z, BlockType.values()[ord]);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Failed to load chunk " + cx + "," + cy + "," + cz + ": " + e.getMessage());
+            return null;
+        }
+        return chunk;
+    }
+
+    private Path chunkPath(int cx, int cy, int cz) {
+        return saveDir.resolve(cx + "_" + cy + "_" + cz + ".chk");
     }
 
     private int worldToChunk(int c) {

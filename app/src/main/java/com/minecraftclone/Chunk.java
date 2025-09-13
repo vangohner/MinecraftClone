@@ -36,6 +36,15 @@ public class Chunk {
         clearLods();
     }
 
+    /**
+     * Sets a block without marking the chunk dirty or clearing LOD meshes.
+     * Intended for bulk loading from disk where the chunk will be marked dirty
+     * once after all blocks are populated.
+     */
+    void setBlockUnchecked(int x, int y, int z, BlockType type) {
+        blocks[x][y][z] = type;
+    }
+
     public boolean isDirty() {
         return dirty;
     }
