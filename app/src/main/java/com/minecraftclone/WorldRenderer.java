@@ -19,6 +19,7 @@ import java.util.concurrent.Executors;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.Callbacks;
 import org.lwjgl.glfw.GLFWErrorCallback;
+import org.lwjgl.glfw.GLFWVidMode;
 import org.lwjgl.opengl.GL;
 
 /**
@@ -27,8 +28,15 @@ import org.lwjgl.opengl.GL;
  * Java2D based renderer.
  */
 public class WorldRenderer {
-    private static final int WIDTH = 800;
-    private static final int HEIGHT = 600;
+    private static final int DEFAULT_WIDTH = 800;
+    private static final int DEFAULT_HEIGHT = 600;
+    private int width = DEFAULT_WIDTH;
+    private int height = DEFAULT_HEIGHT;
+    private boolean fullscreen;
+    private int windowedX;
+    private int windowedY;
+    private int windowedWidth = DEFAULT_WIDTH;
+    private int windowedHeight = DEFAULT_HEIGHT;
     /** Movement speed in world units per second. */
     private static final double MOVE_SPEED = 6.0;
     private static final double MOUSE_SENSITIVITY = 0.002;
@@ -90,7 +98,8 @@ public class WorldRenderer {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
 
-        window = glfwCreateWindow(WIDTH, HEIGHT, "Minecraft Clone", NULL, NULL);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+        window = glfwCreateWindow(width, height, "Minecraft Clone", NULL, NULL);
         if (window == NULL) {
             throw new RuntimeException("Failed to create GLFW window");
         }
@@ -100,11 +109,16 @@ public class WorldRenderer {
         glfwSetKeyCallback(window, this::handleKey);
         glfwSetCursorPosCallback(window, this::handleMouse);
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        glfwSetFramebufferSizeCallback(window, (win, w, h) -> {
+            width = w;
+            height = h;
+            updateProjection();
+        });
 
         // Initialize the mouse position to the center of the window so that
         // the first mouse delta is well-defined.
-        lastMouseX = WIDTH / 2.0;
-        lastMouseY = HEIGHT / 2.0;
+        lastMouseX = width / 2.0;
+        lastMouseY = height / 2.0;
         glfwSetCursorPos(window, lastMouseX, lastMouseY);
         GL.createCapabilities();
 
@@ -441,6 +455,11 @@ public class WorldRenderer {
             return;
         }
 
+        if (key == GLFW_KEY_F11 && action == GLFW_PRESS) {
+            toggleFullscreen();
+            return;
+        }
+
         if (action != GLFW_PRESS && action != GLFW_REPEAT) {
             return;
         }
@@ -512,6 +531,36 @@ public class WorldRenderer {
         player.move(0, up * MOVE_SPEED * deltaTime, 0);
     }
 
+    private void toggleFullscreen() {
+        fullscreen = !fullscreen;
+        if (fullscreen) {
+            int[] x = new int[1];
+            int[] y = new int[1];
+            int[] w = new int[1];
+            int[] h = new int[1];
+            glfwGetWindowPos(window, x, y);
+            glfwGetWindowSize(window, w, h);
+            windowedX = x[0];
+            windowedY = y[0];
+            windowedWidth = w[0];
+            windowedHeight = h[0];
+
+            long monitor = glfwGetPrimaryMonitor();
+            GLFWVidMode mode = glfwGetVideoMode(monitor);
+            glfwSetWindowMonitor(window, monitor, 0, 0, mode.width(), mode.height(), GLFW_DONT_CARE);
+            width = mode.width();
+            height = mode.height();
+        } else {
+            glfwSetWindowMonitor(window, NULL, windowedX, windowedY, windowedWidth, windowedHeight, GLFW_DONT_CARE);
+            width = windowedWidth;
+            height = windowedHeight;
+        }
+        lastMouseX = width / 2.0;
+        lastMouseY = height / 2.0;
+        glfwSetCursorPos(window, lastMouseX, lastMouseY);
+        updateProjection();
+    }
+
     private void handleMouse(long window, double xpos, double ypos) {
         double dx = xpos - lastMouseX;
         double dy = ypos - lastMouseY;
@@ -528,9 +577,10 @@ public class WorldRenderer {
     }
 
     private void updateProjection() {
+        glViewport(0, 0, width, height);
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-        float aspect = (float) WIDTH / HEIGHT;
+        float aspect = (float) width / height;
         float far = (renderDistance + 2) * Chunk.SIZE * (float) Math.sqrt(3);
         setPerspective(70f, aspect, 0.1f, far);
         glMatrixMode(GL_MODELVIEW);
