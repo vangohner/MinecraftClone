@@ -30,6 +30,8 @@ public class World {
 
     private static final int REGION_SIZE = 32;
     private static final int CHUNK_BYTES = Chunk.SIZE * Chunk.SIZE * Chunk.SIZE;
+    private static final int REGION_CHUNK_COUNT = REGION_SIZE * REGION_SIZE * REGION_SIZE;
+    private static final int HEADER_BYTES = REGION_CHUNK_COUNT / 8;
 
     public World(ChunkGenerator generator) {
         this(generator, Path.of("world"), false);
@@ -241,8 +243,12 @@ public class World {
     /** Writes the provided chunk data to its region file. */
     private void writeChunk(Chunk chunk, int cx, int cy, int cz) {
         Path path = regionPath(cx, cy, cz);
+        long index = chunkIndex(cx, cy, cz);
         long offset = chunkOffset(cx, cy, cz);
         try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rw")) {
+            if (raf.length() < HEADER_BYTES) {
+                raf.setLength(HEADER_BYTES);
+            }
             raf.seek(offset);
             for (int x = 0; x < Chunk.SIZE; x++) {
                 for (int y = 0; y < Chunk.SIZE; y++) {
@@ -251,6 +257,15 @@ public class World {
                     }
                 }
             }
+            int byteIndex = (int) (index >>> 3);
+            int bitMask = 1 << (index & 7);
+            raf.seek(byteIndex);
+            int flags = raf.read();
+            if (flags < 0) {
+                flags = 0;
+            }
+            raf.seek(byteIndex);
+            raf.write(flags | bitMask);
             chunk.markSaved();
             chunk.clearEmptyLodSteps();
         } catch (IOException e) {
@@ -263,10 +278,21 @@ public class World {
         if (!Files.exists(path)) {
             return null;
         }
+        long index = chunkIndex(cx, cy, cz);
         long offset = chunkOffset(cx, cy, cz);
         Chunk chunk = new Chunk();
         chunk.setOrigin(Chunk.Origin.LOADED);
         try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "r")) {
+            if (raf.length() < HEADER_BYTES) {
+                return null;
+            }
+            int byteIndex = (int) (index >>> 3);
+            int bitMask = 1 << (index & 7);
+            raf.seek(byteIndex);
+            int flags = raf.read();
+            if (flags < 0 || (flags & bitMask) == 0) {
+                return null;
+            }
             if (offset + CHUNK_BYTES > raf.length()) {
                 return null;
             }
@@ -299,12 +325,15 @@ public class World {
         return saveDir.resolve("r_" + rx + "_" + ry + "_" + rz + ".rg");
     }
 
-    private long chunkOffset(int cx, int cy, int cz) {
+    private long chunkIndex(int cx, int cy, int cz) {
         int lx = regionMod(cx);
         int ly = regionMod(cy);
         int lz = regionMod(cz);
-        long index = ((long) lx * REGION_SIZE + ly) * REGION_SIZE + lz;
-        return index * CHUNK_BYTES;
+        return ((long) lx * REGION_SIZE + ly) * REGION_SIZE + lz;
+    }
+
+    private long chunkOffset(int cx, int cy, int cz) {
+        return HEADER_BYTES + chunkIndex(cx, cy, cz) * CHUNK_BYTES;
     }
 
     /** Deletes the region file at the given region coordinates and unloads its chunks. */
