@@ -46,10 +46,17 @@ public class ChunkMesh {
      */
     public static ChunkMesh buildLod(World world, Chunk chunk, int baseX, int baseY, int baseZ, int step) {
         FloatBuffer buffer = buildLodBuffer(world, chunk, baseX, baseY, baseZ, step);
-        int vertexCount = buffer.limit() / 6;
-        if (vertexCount == 0) {
+        if (buffer.limit() == 0) {
             return null;
         }
+        return upload(buffer);
+    }
+
+    /**
+     * Uploads the given vertex buffer to the GPU and returns a mesh.
+     */
+    public static ChunkMesh upload(FloatBuffer buffer) {
+        int vertexCount = buffer.limit() / 6;
         int vbo = glGenBuffers();
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferData(GL_ARRAY_BUFFER, buffer, GL_STATIC_DRAW);
@@ -76,7 +83,7 @@ public class ChunkMesh {
         return buf;
     }
 
-    private static FloatBuffer buildLodBuffer(World world, Chunk chunk, int baseX, int baseY, int baseZ, int step) {
+    static FloatBuffer buildLodBuffer(World world, Chunk chunk, int baseX, int baseY, int baseZ, int step) {
         List<Float> data = new ArrayList<>();
         int cells = (Chunk.SIZE + step - 1) / step;
         int[][] heights = new int[cells][cells];
