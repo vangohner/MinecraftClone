@@ -1,8 +1,7 @@
 package com.minecraftclone;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -28,6 +27,9 @@ public class World {
     private final ChunkGenerator generator;
     private final Path saveDir;
     private final boolean debug;
+
+    private static final int REGION_SIZE = 32;
+    private static final int CHUNK_BYTES = Chunk.SIZE * Chunk.SIZE * Chunk.SIZE;
 
     public World(ChunkGenerator generator) {
         this(generator, Path.of("world"), false);
@@ -236,13 +238,16 @@ public class World {
         writeChunk(chunk, cx, cy, cz);
     }
 
-    /** Writes the provided chunk data to disk. */
+    /** Writes the provided chunk data to its region file. */
     private void writeChunk(Chunk chunk, int cx, int cy, int cz) {
-        try (DataOutputStream out = new DataOutputStream(Files.newOutputStream(chunkPath(cx, cy, cz)))) {
+        Path path = regionPath(cx, cy, cz);
+        long offset = chunkOffset(cx, cy, cz);
+        try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rw")) {
+            raf.seek(offset);
             for (int x = 0; x < Chunk.SIZE; x++) {
                 for (int y = 0; y < Chunk.SIZE; y++) {
                     for (int z = 0; z < Chunk.SIZE; z++) {
-                        out.writeByte(chunk.getBlock(x, y, z).ordinal());
+                        raf.writeByte(chunk.getBlock(x, y, z).ordinal());
                     }
                 }
             }
@@ -254,17 +259,22 @@ public class World {
     }
 
     private Chunk loadChunk(int cx, int cy, int cz) {
-        Path path = chunkPath(cx, cy, cz);
+        Path path = regionPath(cx, cy, cz);
         if (!Files.exists(path)) {
             return null;
         }
+        long offset = chunkOffset(cx, cy, cz);
         Chunk chunk = new Chunk();
         chunk.setOrigin(Chunk.Origin.LOADED);
-        try (DataInputStream in = new DataInputStream(Files.newInputStream(path))) {
+        try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "r")) {
+            if (offset + CHUNK_BYTES > raf.length()) {
+                return null;
+            }
+            raf.seek(offset);
             for (int x = 0; x < Chunk.SIZE; x++) {
                 for (int y = 0; y < Chunk.SIZE; y++) {
                     for (int z = 0; z < Chunk.SIZE; z++) {
-                        int ord = in.readUnsignedByte();
+                        int ord = raf.readUnsignedByte();
                         chunk.setBlockUnchecked(x, y, z, BlockType.values()[ord]);
                     }
                 }
@@ -278,8 +288,61 @@ public class World {
         return chunk;
     }
 
-    private Path chunkPath(int cx, int cy, int cz) {
-        return saveDir.resolve(cx + "_" + cy + "_" + cz + ".chk");
+    private Path regionPath(int cx, int cy, int cz) {
+        int rx = regionCoord(cx);
+        int ry = regionCoord(cy);
+        int rz = regionCoord(cz);
+        return saveDir.resolve("r_" + rx + "_" + ry + "_" + rz + ".rg");
+    }
+
+    private Path regionPathFromCoords(int rx, int ry, int rz) {
+        return saveDir.resolve("r_" + rx + "_" + ry + "_" + rz + ".rg");
+    }
+
+    private long chunkOffset(int cx, int cy, int cz) {
+        int lx = regionMod(cx);
+        int ly = regionMod(cy);
+        int lz = regionMod(cz);
+        long index = ((long) lx * REGION_SIZE + ly) * REGION_SIZE + lz;
+        return index * CHUNK_BYTES;
+    }
+
+    /** Deletes the region file at the given region coordinates and unloads its chunks. */
+    public void deleteRegion(int rx, int ry, int rz) {
+        chunks.keySet().removeIf(pos ->
+                regionCoord(pos.x()) == rx &&
+                regionCoord(pos.y()) == ry &&
+                regionCoord(pos.z()) == rz);
+        try {
+            Files.deleteIfExists(regionPathFromCoords(rx, ry, rz));
+        } catch (IOException e) {
+            System.err.println("Failed to delete region " + rx + "," + ry + "," + rz + ": " + e.getMessage());
+        }
+    }
+
+    /** Deletes all region files and unloads every chunk. */
+    public void clearWorld() {
+        chunks.clear();
+        pending.clear();
+        try (var stream = Files.list(saveDir)) {
+            stream.filter(p -> p.getFileName().toString().endsWith(".rg")).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException e) {
+                    System.err.println("Failed to delete region file " + p + ": " + e.getMessage());
+                }
+            });
+        } catch (IOException e) {
+            System.err.println("Failed to clear world: " + e.getMessage());
+        }
+    }
+
+    private int regionCoord(int c) {
+        return Math.floorDiv(c, REGION_SIZE);
+    }
+
+    private int regionMod(int c) {
+        return Math.floorMod(c, REGION_SIZE);
     }
 
     private int worldToChunk(int c) {
