@@ -22,7 +22,8 @@ import org.lwjgl.opengl.GL;
 public class WorldRenderer {
     private static final int WIDTH = 800;
     private static final int HEIGHT = 600;
-    private static final double MOVE_SPEED = 0.1;
+    /** Movement speed in world units per second. */
+    private static final double MOVE_SPEED = 6.0;
     private static final double MOUSE_SENSITIVITY = 0.002;
     private static final int LOD1_STEP = 2;
     private static final int LOD2_STEP = 4;
@@ -90,11 +91,18 @@ public class WorldRenderer {
     }
 
     private void loop() {
+        double lastTime = glfwGetTime();
+        double fpsTimer = lastTime;
+        int frames = 0;
         while (!glfwWindowShouldClose(window)) {
+            double now = glfwGetTime();
+            double deltaTime = now - lastTime;
+            lastTime = now;
+
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             // Handle continuous movement input each frame.
-            handleMovement();
+            handleMovement(deltaTime);
 
             glLoadIdentity();
             glRotatef((float) Math.toDegrees(-player.getPitch()), 1f, 0f, 0f);
@@ -107,6 +115,13 @@ public class WorldRenderer {
 
             glfwSwapBuffers(window);
             glfwPollEvents();
+
+            frames++;
+            if (now - fpsTimer >= 1.0) {
+                glfwSetWindowTitle(window, "Minecraft Clone - FPS: " + frames);
+                frames = 0;
+                fpsTimer += 1.0;
+            }
         }
     }
 
@@ -335,7 +350,7 @@ public class WorldRenderer {
         }
     }
 
-    private void handleMovement() {
+    private void handleMovement(double deltaTime) {
         double forward = 0;
         double right = 0;
         double up = 0;
@@ -360,22 +375,23 @@ public class WorldRenderer {
         }
 
         if (forward != 0 || right != 0) {
-            moveRelative(right, forward);
+            moveRelative(right, forward, deltaTime);
         }
         if (up != 0) {
-            moveVertical(up);
+            moveVertical(up, deltaTime);
         }
     }
 
-    private void moveRelative(double right, double forward) {
+    private void moveRelative(double right, double forward, double deltaTime) {
         double yaw = player.getYaw();
-        double dx = (-forward * Math.sin(yaw) + right * Math.cos(yaw)) * MOVE_SPEED;
-        double dz = (-forward * Math.cos(yaw) - right * Math.sin(yaw)) * MOVE_SPEED;
+        double speed = MOVE_SPEED * deltaTime;
+        double dx = (-forward * Math.sin(yaw) + right * Math.cos(yaw)) * speed;
+        double dz = (-forward * Math.cos(yaw) - right * Math.sin(yaw)) * speed;
         player.move(dx, 0, dz);
     }
 
-    private void moveVertical(double up) {
-        player.move(0, up * MOVE_SPEED, 0);
+    private void moveVertical(double up, double deltaTime) {
+        player.move(0, up * MOVE_SPEED * deltaTime, 0);
     }
 
     private void handleMouse(long window, double xpos, double ypos) {
