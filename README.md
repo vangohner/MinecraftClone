@@ -57,5 +57,6 @@ so you know why the application stays open.
 ## Debugging
 
 Pass `--debug-chunks` as a command-line argument to log when chunks are generated or loaded. When enabled, generated chunks are outlined in red while those loaded from disk are shown in green, making it easy to spot persistence issues.
+Once in game, press **F3 + G** to toggle chunk border outlines on or off and **F3 + C** to show or hide your current coordinates in the window title.
 
 This is only the first step toward a full clone. Future work will include richer rendering, input handling, world generation and more.
