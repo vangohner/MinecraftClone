@@ -49,9 +49,9 @@ java -jar app/build/libs/app.jar
 ## World Saving
 
 Generated chunks are immediately written as simple binary files inside the
-`world/` directory. They are reloaded on startup and all loaded chunks are saved
-again on shutdown to persist any changes. The shutdown sequence logs progress
-and an estimated remaining time so you know why the application stays open.
+`world/` directory. On shutdown, only chunks modified since their last save are
+written again, with progress and an estimated remaining time so you know why the
+application stays open.
 
 ## Debugging
 

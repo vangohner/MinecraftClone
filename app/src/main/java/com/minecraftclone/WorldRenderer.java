@@ -50,6 +50,7 @@ public class WorldRenderer {
     public void run() {
         init();
         loop();
+        world.shutdown();
         Callbacks.glfwFreeCallbacks(window);
         glfwDestroyWindow(window);
         glfwTerminate();

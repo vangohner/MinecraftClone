@@ -2,8 +2,6 @@ package com.minecraftclone;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL15.*;
-import static org.lwjgl.glfw.GLFW.glfwGetCurrentContext;
-import static org.lwjgl.system.MemoryUtil.NULL;
 
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
@@ -12,6 +10,7 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.lwjgl.BufferUtils;
+import org.lwjgl.opengl.GL;
 
 /**
  * Represents a cached mesh for a chunk using a single VBO.
@@ -410,7 +409,7 @@ public class ChunkMesh {
      * Releases the underlying GL resources.
      */
     public void dispose() {
-        if (glfwGetCurrentContext() != NULL) {
+        if (GL.getCapabilities() != null) {
             glDeleteBuffers(vbo);
         } else {
             pendingDeletes.add(vbo);

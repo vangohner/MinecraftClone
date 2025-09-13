@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Represents the game world as a set of chunks.
@@ -138,13 +139,24 @@ public class World {
      * Stops the worker threads. Should be invoked on application shutdown.
      */
     public void shutdown() {
-        saveAll();
         workers.shutdown();
+        try {
+            workers.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        saveAll();
     }
 
     /** Saves all currently loaded chunks to disk with progress output. */
     public void saveAll() {
-        var positions = new ArrayList<>(chunks.keySet());
+        var positions = new ArrayList<ChunkPos>();
+        for (var pos : chunks.keySet()) {
+            Chunk chunk = chunks.get(pos);
+            if (chunk != null && chunk.needsSave()) {
+                positions.add(pos);
+            }
+        }
         int total = positions.size();
         if (total == 0) {
             return;
@@ -165,7 +177,7 @@ public class World {
     /** Saves a single chunk if it is loaded. */
     public void saveChunk(int cx, int cy, int cz) {
         Chunk chunk = getChunkIfLoaded(cx, cy, cz);
-        if (chunk == null) {
+        if (chunk == null || !chunk.needsSave()) {
             return;
         }
         writeChunk(chunk, cx, cy, cz);
@@ -181,6 +193,7 @@ public class World {
                     }
                 }
             }
+            chunk.markSaved();
         } catch (IOException e) {
             System.err.println("Failed to save chunk " + cx + "," + cy + "," + cz + ": " + e.getMessage());
         }
@@ -202,6 +215,7 @@ public class World {
                     }
                 }
             }
+            chunk.markSaved();
         } catch (IOException e) {
             System.err.println("Failed to load chunk " + cx + "," + cy + "," + cz + ": " + e.getMessage());
             return null;

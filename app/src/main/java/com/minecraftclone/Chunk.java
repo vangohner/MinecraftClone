@@ -12,6 +12,7 @@ public class Chunk {
     private ChunkMesh mesh;
     private final Map<Integer, ChunkMesh> lodMeshes = new HashMap<>();
     private boolean dirty = true;
+    private boolean needsSave = true;
     public enum Origin { GENERATED, LOADED }
     private Origin origin = Origin.GENERATED;
 
@@ -35,6 +36,7 @@ public class Chunk {
         check(x, y, z);
         blocks[x][y][z] = type;
         dirty = true;
+        needsSave = true;
         clearLods();
     }
 
@@ -49,6 +51,14 @@ public class Chunk {
 
     public boolean isDirty() {
         return dirty;
+    }
+
+    public boolean needsSave() {
+        return needsSave;
+    }
+
+    void markSaved() {
+        needsSave = false;
     }
 
     public ChunkMesh getMesh() {
