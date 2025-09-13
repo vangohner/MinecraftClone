@@ -10,9 +10,10 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * Represents the game world as a set of chunks.
@@ -20,7 +21,7 @@ import java.util.concurrent.TimeUnit;
 public class World {
     private final Map<ChunkPos, Chunk> chunks = new ConcurrentHashMap<>();
     private final Set<ChunkPos> pending = Collections.newSetFromMap(new ConcurrentHashMap<>());
-    private final ExecutorService workers = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+    private final ThreadPoolExecutor workers;
     private final ChunkGenerator generator;
     private final Path saveDir;
     private final boolean debug;
@@ -41,6 +42,13 @@ public class World {
         this.generator = generator;
         this.saveDir = saveDir;
         this.debug = debug;
+        int threads = Runtime.getRuntime().availableProcessors();
+        this.workers = new ThreadPoolExecutor(
+                threads,
+                threads,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(threads * 4)); // bounded queue prevents huge backlogs
         try {
             Files.createDirectories(saveDir);
         } catch (IOException e) {
@@ -97,16 +105,24 @@ public class World {
      */
     public void requestChunk(int cx, int cy, int cz) {
         ChunkPos pos = new ChunkPos(cx, cy, cz);
-        if (chunks.containsKey(pos) || !pending.add(pos)) {
+        if (chunks.containsKey(pos) || pending.contains(pos)) {
             return;
         }
-        workers.submit(() -> {
-            try {
-                getChunk(cx, cy, cz);
-            } finally {
-                pending.remove(pos);
-            }
-        });
+        if (workers.getQueue().remainingCapacity() == 0) {
+            return; // Too many pending tasks, drop this request.
+        }
+        pending.add(pos);
+        try {
+            workers.submit(() -> {
+                try {
+                    getChunk(cx, cy, cz);
+                } finally {
+                    pending.remove(pos);
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            pending.remove(pos); // Executor shutting down or queue full; drop the task.
+        }
     }
 
     /**
@@ -146,8 +162,11 @@ public class World {
     public void shutdown() {
         workers.shutdown();
         try {
-            workers.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+            if (!workers.awaitTermination(5, TimeUnit.SECONDS)) {
+                workers.shutdownNow();
+            }
         } catch (InterruptedException e) {
+            workers.shutdownNow();
             Thread.currentThread().interrupt();
         }
         saveAll();
