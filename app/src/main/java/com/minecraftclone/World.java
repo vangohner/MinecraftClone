@@ -1,11 +1,21 @@
 package com.minecraftclone;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.Comparator;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * Represents the game world as a set of chunks.
@@ -13,11 +23,43 @@ import java.util.concurrent.Executors;
 public class World {
     private final Map<ChunkPos, Chunk> chunks = new ConcurrentHashMap<>();
     private final Set<ChunkPos> pending = Collections.newSetFromMap(new ConcurrentHashMap<>());
-    private final ExecutorService workers = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+    private final ThreadPoolExecutor workers;
+    private final int maxQueueSize;
     private final ChunkGenerator generator;
+    private final Path saveDir;
+    private final boolean debug;
 
     public World(ChunkGenerator generator) {
+        this(generator, Path.of("world"), false);
+    }
+
+    public World(ChunkGenerator generator, boolean debug) {
+        this(generator, Path.of("world"), debug);
+    }
+
+    public World(ChunkGenerator generator, Path saveDir) {
+        this(generator, saveDir, false);
+    }
+
+    public World(ChunkGenerator generator, Path saveDir, boolean debug) {
         this.generator = generator;
+        this.saveDir = saveDir;
+        this.debug = debug;
+        int threads = Runtime.getRuntime().availableProcessors();
+        this.maxQueueSize = threads * 4;
+        BlockingQueue<Runnable> queue = new PriorityBlockingQueue<>(maxQueueSize,
+                Comparator.comparingInt(r -> ((ChunkRequest) r).distanceSq));
+        this.workers = new ThreadPoolExecutor(
+                threads,
+                threads,
+                0L,
+                TimeUnit.MILLISECONDS,
+                queue);
+        try {
+            Files.createDirectories(saveDir);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to create world directory", e);
+        }
     }
 
     /**
@@ -29,13 +71,30 @@ public class World {
     public Chunk getChunk(int cx, int cy, int cz) {
         ChunkPos pos = new ChunkPos(cx, cy, cz);
         return chunks.computeIfAbsent(pos, p -> {
-            Chunk chunk = new Chunk();
-            if (generator != null) {
-                generator.generate(this, p.x(), p.y(), p.z(), chunk);
+            Chunk chunk = loadChunk(p.x(), p.y(), p.z());
+            if (chunk == null) {
+                if (debug) {
+                    System.out.println("Generating chunk " + p.x() + "," + p.y() + "," + p.z());
+                }
+                chunk = new Chunk();
+                chunk.setOrigin(Chunk.Origin.GENERATED);
+                if (generator != null) {
+                    generator.generate(this, p.x(), p.y(), p.z(), chunk);
+                }
+                // persist newly generated chunk immediately
+                writeChunk(chunk, p.x(), p.y(), p.z());
+            } else {
+                if (debug) {
+                    System.out.println("Loaded chunk " + p.x() + "," + p.y() + "," + p.z());
+                }
             }
             markNeighborsDirty(p.x(), p.y(), p.z());
             return chunk;
         });
+    }
+
+    public boolean isDebug() {
+        return debug;
     }
 
     /**
@@ -48,20 +107,51 @@ public class World {
 
     /**
      * Queues asynchronous generation for the specified chunk if it has not been
-     * loaded yet. Multiple requests for the same chunk are coalesced.
+     * loaded yet. Multiple requests for the same chunk are coalesced. The player
+     * chunk coordinates are provided so requests can be prioritized by proximity.
      */
-    public void requestChunk(int cx, int cy, int cz) {
+    public void requestChunk(int cx, int cy, int cz, int pcx, int pcy, int pcz) {
         ChunkPos pos = new ChunkPos(cx, cy, cz);
-        if (chunks.containsKey(pos) || !pending.add(pos)) {
+        if (chunks.containsKey(pos) || pending.contains(pos)) {
             return;
         }
-        workers.submit(() -> {
+        if (workers.getQueue().size() >= maxQueueSize) {
+            return; // Too many pending tasks, drop this request.
+        }
+        int dx = cx - pcx;
+        int dy = cy - pcy;
+        int dz = cz - pcz;
+        int distSq = dx * dx + dy * dy + dz * dz;
+        pending.add(pos);
+        try {
+            workers.execute(new ChunkRequest(cx, cy, cz, pos, distSq));
+        } catch (RejectedExecutionException e) {
+            pending.remove(pos); // Executor shutting down or queue full; drop the task.
+        }
+    }
+
+    /** Simple task wrapper carrying distance information for prioritization. */
+    private class ChunkRequest implements Runnable {
+        final int cx, cy, cz;
+        final ChunkPos pos;
+        final int distanceSq;
+
+        ChunkRequest(int cx, int cy, int cz, ChunkPos pos, int distanceSq) {
+            this.cx = cx;
+            this.cy = cy;
+            this.cz = cz;
+            this.pos = pos;
+            this.distanceSq = distanceSq;
+        }
+
+        @Override
+        public void run() {
             try {
                 getChunk(cx, cy, cz);
             } finally {
                 pending.remove(pos);
             }
-        });
+        }
     }
 
     /**
@@ -83,11 +173,16 @@ public class World {
     }
 
     /**
-     * Sets a block at world coordinates.
+     * Sets a block at world coordinates and writes the enclosing chunk back to disk.
      */
     public void setBlock(int x, int y, int z, BlockType type) {
-        Chunk chunk = getChunk(worldToChunk(x), worldToChunk(y), worldToChunk(z));
+        int cx = worldToChunk(x);
+        int cy = worldToChunk(y);
+        int cz = worldToChunk(z);
+        Chunk chunk = getChunk(cx, cy, cz);
         chunk.setBlock(mod(x), mod(y), mod(z), type);
+        // persist the chunk immediately so modifications survive crashes
+        saveChunk(cx, cy, cz);
     }
 
     /**
@@ -95,6 +190,94 @@ public class World {
      */
     public void shutdown() {
         workers.shutdown();
+        try {
+            if (!workers.awaitTermination(5, TimeUnit.SECONDS)) {
+                workers.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            workers.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        saveAll();
+    }
+
+    /** Saves all loaded chunks whose data changed since the last write, with progress output. */
+    public void saveAll() {
+        var positions = new ArrayList<ChunkPos>();
+        for (var pos : chunks.keySet()) {
+            Chunk chunk = chunks.get(pos);
+            if (chunk != null && chunk.needsSave()) {
+                positions.add(pos);
+            }
+        }
+        int total = positions.size();
+        if (total == 0) {
+            return;
+        }
+        System.out.println("Saving " + total + " chunks...");
+        long start = System.nanoTime();
+        for (int i = 0; i < total; i++) {
+            ChunkPos pos = positions.get(i);
+            saveChunk(pos.x(), pos.y(), pos.z());
+            long elapsed = System.nanoTime() - start;
+            long avg = elapsed / (i + 1);
+            long eta = avg * (total - i - 1);
+            System.out.printf("Saved %d/%d chunks (ETA %.1fs)%n", i + 1, total, eta / 1_000_000_000.0);
+        }
+        System.out.println("Finished saving chunks.");
+    }
+
+    /** Saves a single chunk if it has unsaved changes. */
+    public void saveChunk(int cx, int cy, int cz) {
+        Chunk chunk = getChunkIfLoaded(cx, cy, cz);
+        if (chunk == null || !chunk.needsSave()) {
+            return;
+        }
+        writeChunk(chunk, cx, cy, cz);
+    }
+
+    /** Writes the provided chunk data to disk. */
+    private void writeChunk(Chunk chunk, int cx, int cy, int cz) {
+        try (DataOutputStream out = new DataOutputStream(Files.newOutputStream(chunkPath(cx, cy, cz)))) {
+            for (int x = 0; x < Chunk.SIZE; x++) {
+                for (int y = 0; y < Chunk.SIZE; y++) {
+                    for (int z = 0; z < Chunk.SIZE; z++) {
+                        out.writeByte(chunk.getBlock(x, y, z).ordinal());
+                    }
+                }
+            }
+            chunk.markSaved();
+        } catch (IOException e) {
+            System.err.println("Failed to save chunk " + cx + "," + cy + "," + cz + ": " + e.getMessage());
+        }
+    }
+
+    private Chunk loadChunk(int cx, int cy, int cz) {
+        Path path = chunkPath(cx, cy, cz);
+        if (!Files.exists(path)) {
+            return null;
+        }
+        Chunk chunk = new Chunk();
+        chunk.setOrigin(Chunk.Origin.LOADED);
+        try (DataInputStream in = new DataInputStream(Files.newInputStream(path))) {
+            for (int x = 0; x < Chunk.SIZE; x++) {
+                for (int y = 0; y < Chunk.SIZE; y++) {
+                    for (int z = 0; z < Chunk.SIZE; z++) {
+                        int ord = in.readUnsignedByte();
+                        chunk.setBlockUnchecked(x, y, z, BlockType.values()[ord]);
+                    }
+                }
+            }
+            chunk.markSaved();
+        } catch (IOException e) {
+            System.err.println("Failed to load chunk " + cx + "," + cy + "," + cz + ": " + e.getMessage());
+            return null;
+        }
+        return chunk;
+    }
+
+    private Path chunkPath(int cx, int cy, int cz) {
+        return saveDir.resolve(cx + "_" + cy + "_" + cz + ".chk");
     }
 
     private int worldToChunk(int c) {

@@ -46,4 +46,16 @@ To build a runnable JAR execute:
 java -jar app/build/libs/app.jar
 ```
 
+## World Saving
+
+Chunks persist to disk as you play. Newly generated chunks are written
+immediately to the `world/` directory, and any chunk whose blocks change is
+saved again right after the modification. When the game shuts down, it flushes
+any remaining chunks whose data differs from the last save and reports progress
+so you know why the application stays open.
+
+## Debugging
+
+Pass `--debug-chunks` as a command-line argument to log when chunks are generated or loaded. When enabled, generated chunks are outlined in red while those loaded from disk are shown in green, making it easy to spot persistence issues.
+
 This is only the first step toward a full clone. Future work will include richer rendering, input handling, world generation and more.
