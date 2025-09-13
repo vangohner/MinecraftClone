@@ -1,7 +1,9 @@
 package com.minecraftclone;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Represents a 16x16x16 block section of the world.
@@ -11,6 +13,7 @@ public class Chunk {
     private final BlockType[][][] blocks = new BlockType[SIZE][SIZE][SIZE];
     private ChunkMesh mesh;
     private final Map<Integer, ChunkMesh> lodMeshes = new HashMap<>();
+    private final Set<Integer> emptyLodSteps = new HashSet<>();
     private boolean dirty = true;
     // whether the chunk's block data differs from its last on-disk save
     private boolean needsSave = true;
@@ -80,6 +83,18 @@ public class Chunk {
         lodMeshes.put(step, mesh);
     }
 
+    public boolean isLodStepEmpty(int step) {
+        return emptyLodSteps.contains(step);
+    }
+
+    public void markLodStepEmpty(int step) {
+        emptyLodSteps.add(step);
+    }
+
+    public void clearEmptyLodSteps() {
+        emptyLodSteps.clear();
+    }
+
     public Origin getOrigin() {
         return origin;
     }
@@ -99,6 +114,7 @@ public class Chunk {
             m.dispose();
         }
         lodMeshes.clear();
+        emptyLodSteps.clear();
     }
 
     private void check(int x, int y, int z) {
