@@ -26,8 +26,16 @@ You can optionally specify the initial render distance (in chunks) as the second
 ./gradlew run --args="12345 8"
 ```
 
-Far-away chunks are drawn using a simplified heightmap mesh so you can push
-render distances much higher than the full-detail radius without large pauses.
+Two additional arguments control where the mid- and far-distance LOD meshes
+begin. The following example starts drawing LOD level 1 beyond 8 chunks and LOD
+level 2 beyond 16 chunks while rendering out to 24 chunks:
+
+```
+./gradlew run --args="12345 24 8 16"
+```
+
+Far-away chunks are drawn using simplified heightmap meshes with progressively
+coarser steps, allowing much higher render distances without large pauses.
 
 On Windows use `gradlew.bat run` instead.
 

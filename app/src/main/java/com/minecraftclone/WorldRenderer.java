@@ -21,13 +21,15 @@ public class WorldRenderer {
     private static final int HEIGHT = 600;
     private static final double MOVE_SPEED = 0.1;
     private static final double MOUSE_SENSITIVITY = 0.002;
-    private static final int LOD_START = 8;
-    private static final int LOD_STEP = 4;
+    private static final int LOD1_STEP = 2;
+    private static final int LOD2_STEP = 4;
     /** Number of chunks to render in each direction from the player. */
     private int renderDistance;
 
     private final World world;
     private final Player player;
+    private int lod1Start;
+    private int lod2Start;
     private long window;
     private double lastMouseX;
     private double lastMouseY;
@@ -36,10 +38,12 @@ public class WorldRenderer {
     private final float[][] frustum = new float[6][4];
     // TODO: Track visible neighbors for occlusion culling.
 
-    public WorldRenderer(World world, Player player, int renderDistance) {
+    public WorldRenderer(World world, Player player, int renderDistance, int lod1Start, int lod2Start) {
         this.world = world;
         this.player = player;
         this.renderDistance = renderDistance;
+        this.lod1Start = lod1Start;
+        this.lod2Start = lod2Start;
     }
 
     /** Launches the rendering loop. */
@@ -124,18 +128,10 @@ public class WorldRenderer {
                     }
                     int dist = Math.max(Math.max(Math.abs(cx - playerChunkX), Math.abs(cy - playerChunkY)),
                             Math.abs(cz - playerChunkZ));
-                    if (dist > LOD_START) {
-                        if (chunk.isLodDirty() || chunk.getLodMesh() == null) {
-                            ChunkMesh old = chunk.getLodMesh();
-                            if (old != null) {
-                                old.dispose();
-                            }
-                            chunk.setLodMesh(ChunkMesh.buildLod(chunk, baseX, baseY, baseZ, LOD_STEP));
-                        }
-                        ChunkMesh mesh = chunk.getLodMesh();
-                        if (mesh != null) {
-                            mesh.render();
-                        }
+                    if (dist > lod2Start) {
+                        renderLod(chunk, baseX, baseY, baseZ, LOD2_STEP);
+                    } else if (dist > lod1Start) {
+                        renderLod(chunk, baseX, baseY, baseZ, LOD1_STEP);
                     } else {
                         if (chunk.isDirty() || chunk.getMesh() == null) {
                             ChunkMesh old = chunk.getMesh();
@@ -152,6 +148,15 @@ public class WorldRenderer {
                 }
             }
         }
+    }
+
+    private void renderLod(Chunk chunk, int baseX, int baseY, int baseZ, int step) {
+        ChunkMesh mesh = chunk.getLodMesh(step);
+        if (mesh == null) {
+            mesh = ChunkMesh.buildLod(chunk, baseX, baseY, baseZ, step);
+            chunk.setLodMesh(step, mesh);
+        }
+        mesh.render();
     }
 
     /** Extracts the six view frustum planes from the current projection and modelview matrices. */

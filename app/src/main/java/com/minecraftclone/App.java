@@ -26,6 +26,24 @@ public class App {
             }
         }
 
+        int lod1Start = 8;
+        if (args.length > 2) {
+            try {
+                lod1Start = Integer.parseInt(args[2]);
+            } catch (NumberFormatException e) {
+                System.err.println("Invalid LOD1 start '" + args[2] + "', using default " + lod1Start);
+            }
+        }
+
+        int lod2Start = 16;
+        if (args.length > 3) {
+            try {
+                lod2Start = Integer.parseInt(args[3]);
+            } catch (NumberFormatException e) {
+                System.err.println("Invalid LOD2 start '" + args[3] + "', using default " + lod2Start);
+            }
+        }
+
         ChunkGenerator generator = new ChunkGenerator(seed);
         World world = new World(generator);
 
@@ -44,7 +62,7 @@ public class App {
         System.out.println("Player starting at " + player);
 
         // Launch the LWJGL-based renderer.
-        WorldRenderer renderer = new WorldRenderer(world, player, renderDistance);
+        WorldRenderer renderer = new WorldRenderer(world, player, renderDistance, lod1Start, lod2Start);
         renderer.run();
         world.shutdown();
     }

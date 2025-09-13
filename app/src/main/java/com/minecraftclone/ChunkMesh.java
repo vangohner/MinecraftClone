@@ -70,8 +70,11 @@ public class ChunkMesh {
 
     private static FloatBuffer buildLodBuffer(Chunk chunk, int baseX, int baseY, int baseZ, int step) {
         List<Float> data = new ArrayList<>();
-        for (int x = 0; x < Chunk.SIZE; x += step) {
-            for (int z = 0; z < Chunk.SIZE; z += step) {
+        int cells = (Chunk.SIZE + step - 1) / step;
+        int[][] heights = new int[cells][cells];
+        BlockType[][] types = new BlockType[cells][cells];
+        for (int ix = 0, x = 0; ix < cells; ix++, x += step) {
+            for (int iz = 0, z = 0; iz < cells; iz++, z += step) {
                 int topY = -1;
                 BlockType topType = BlockType.AIR;
                 for (int dx = 0; dx < step && x + dx < Chunk.SIZE; dx++) {
@@ -88,17 +91,54 @@ public class ChunkMesh {
                         }
                     }
                 }
-                if (topY >= 0) {
-                    float x1 = baseX + x;
-                    float z1 = baseZ + z;
-                    float x2 = baseX + Math.min(x + step, Chunk.SIZE);
-                    float z2 = baseZ + Math.min(z + step, Chunk.SIZE);
-                    float y = baseY + topY + 1;
-                    float[] color = colorFor(topType);
-                    addFace(data, color, x1, y, z2, x2, y, z2, x2, y, z1, x1, y, z1);
+                heights[ix][iz] = topY;
+                types[ix][iz] = topType;
+            }
+        }
+
+        for (int ix = 0, x = 0; ix < cells; ix++, x += step) {
+            for (int iz = 0, z = 0; iz < cells; iz++, z += step) {
+                int h = heights[ix][iz];
+                if (h < 0) {
+                    continue;
+                }
+                float x1 = baseX + x;
+                float z1 = baseZ + z;
+                float x2 = baseX + Math.min(x + step, Chunk.SIZE);
+                float z2 = baseZ + Math.min(z + step, Chunk.SIZE);
+                float top = baseY + h + 1;
+                float[] color = colorFor(types[ix][iz]);
+                // top face
+                addFace(data, color, x1, top, z2, x2, top, z2, x2, top, z1, x1, top, z1);
+
+                float[] sideColor = shade(color, 0.8f);
+                // east
+                int he = (ix == cells - 1) ? -1 : heights[ix + 1][iz];
+                if (h > he) {
+                    float bottom = baseY + (he >= 0 ? he + 1 : 0);
+                    addFace(data, sideColor, x2, bottom, z2, x2, bottom, z1, x2, top, z1, x2, top, z2);
+                }
+                // west
+                int hw = (ix == 0) ? -1 : heights[ix - 1][iz];
+                if (h > hw) {
+                    float bottom = baseY + (hw >= 0 ? hw + 1 : 0);
+                    addFace(data, sideColor, x1, bottom, z1, x1, bottom, z2, x1, top, z2, x1, top, z1);
+                }
+                // south
+                int hs = (iz == cells - 1) ? -1 : heights[ix][iz + 1];
+                if (h > hs) {
+                    float bottom = baseY + (hs >= 0 ? hs + 1 : 0);
+                    addFace(data, sideColor, x1, bottom, z2, x2, bottom, z2, x2, top, z2, x1, top, z2);
+                }
+                // north
+                int hn = (iz == 0) ? -1 : heights[ix][iz - 1];
+                if (h > hn) {
+                    float bottom = baseY + (hn >= 0 ? hn + 1 : 0);
+                    addFace(data, sideColor, x2, bottom, z1, x1, bottom, z1, x1, top, z1, x2, top, z1);
                 }
             }
         }
+
         FloatBuffer buf = BufferUtils.createFloatBuffer(data.size());
         for (Float f : data) {
             buf.put(f);
