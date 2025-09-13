@@ -1,5 +1,8 @@
 package com.minecraftclone;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Represents a 16x16x16 block section of the world.
  */
@@ -7,6 +10,7 @@ public class Chunk {
     public static final int SIZE = 16;
     private final BlockType[][][] blocks = new BlockType[SIZE][SIZE][SIZE];
     private ChunkMesh mesh;
+    private final Map<Integer, ChunkMesh> lodMeshes = new HashMap<>();
     private boolean dirty = true;
 
     public Chunk() {
@@ -29,6 +33,7 @@ public class Chunk {
         check(x, y, z);
         blocks[x][y][z] = type;
         dirty = true;
+        clearLods();
     }
 
     public boolean isDirty() {
@@ -44,9 +49,25 @@ public class Chunk {
         this.dirty = false;
     }
 
+    public ChunkMesh getLodMesh(int step) {
+        return lodMeshes.get(step);
+    }
+
+    public void setLodMesh(int step, ChunkMesh mesh) {
+        lodMeshes.put(step, mesh);
+    }
+
     /** Marks the chunk as needing its mesh rebuilt. */
     public void markDirty() {
         this.dirty = true;
+        clearLods();
+    }
+
+    private void clearLods() {
+        for (ChunkMesh m : lodMeshes.values()) {
+            m.dispose();
+        }
+        lodMeshes.clear();
     }
 
     private void check(int x, int y, int z) {

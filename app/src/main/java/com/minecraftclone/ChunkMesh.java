@@ -2,10 +2,14 @@ package com.minecraftclone;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL15.*;
+import static org.lwjgl.glfw.GLFW.glfwGetCurrentContext;
+import static org.lwjgl.system.MemoryUtil.NULL;
 
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.lwjgl.BufferUtils;
 
@@ -13,6 +17,7 @@ import org.lwjgl.BufferUtils;
  * Represents a cached mesh for a chunk using a single VBO.
  */
 public class ChunkMesh {
+    private static final Queue<Integer> pendingDeletes = new ConcurrentLinkedQueue<>();
     private final int vbo;
     private final int vertexCount;
 
@@ -34,6 +39,21 @@ public class ChunkMesh {
         return new ChunkMesh(vbo, vertexCount);
     }
 
+    /**
+     * Builds a simplified heightmap mesh using the specified step size. Larger
+     * step values result in fewer quads and are suited for distant LOD
+     * rendering.
+     */
+    public static ChunkMesh buildLod(Chunk chunk, int baseX, int baseY, int baseZ, int step) {
+        FloatBuffer buffer = buildLodBuffer(chunk, baseX, baseY, baseZ, step);
+        int vertexCount = buffer.limit() / 6;
+        int vbo = glGenBuffers();
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, buffer, GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        return new ChunkMesh(vbo, vertexCount);
+    }
+
     private static FloatBuffer buildBuffer(World world, Chunk chunk, int baseX, int baseY, int baseZ) {
         List<Float> data = new ArrayList<>();
 
@@ -44,6 +64,85 @@ public class ChunkMesh {
         meshYZ(data, world, chunk, baseX, baseY, baseZ, false);  // -X
         meshXZ(data, world, chunk, baseX, baseY, baseZ, true);   // +Y
         meshXZ(data, world, chunk, baseX, baseY, baseZ, false);  // -Y
+
+        FloatBuffer buf = BufferUtils.createFloatBuffer(data.size());
+        for (Float f : data) {
+            buf.put(f);
+        }
+        buf.flip();
+        return buf;
+    }
+
+    private static FloatBuffer buildLodBuffer(Chunk chunk, int baseX, int baseY, int baseZ, int step) {
+        List<Float> data = new ArrayList<>();
+        int cells = (Chunk.SIZE + step - 1) / step;
+        int[][] heights = new int[cells][cells];
+        BlockType[][] types = new BlockType[cells][cells];
+        for (int ix = 0, x = 0; ix < cells; ix++, x += step) {
+            for (int iz = 0, z = 0; iz < cells; iz++, z += step) {
+                int topY = -1;
+                BlockType topType = BlockType.AIR;
+                for (int dx = 0; dx < step && x + dx < Chunk.SIZE; dx++) {
+                    for (int dz = 0; dz < step && z + dz < Chunk.SIZE; dz++) {
+                        for (int y = Chunk.SIZE - 1; y >= 0; y--) {
+                            BlockType t = chunk.getBlock(x + dx, y, z + dz);
+                            if (t != BlockType.AIR) {
+                                if (y > topY) {
+                                    topY = y;
+                                    topType = t;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                heights[ix][iz] = topY;
+                types[ix][iz] = topType;
+            }
+        }
+
+        for (int ix = 0, x = 0; ix < cells; ix++, x += step) {
+            for (int iz = 0, z = 0; iz < cells; iz++, z += step) {
+                int h = heights[ix][iz];
+                if (h < 0) {
+                    continue;
+                }
+                float x1 = baseX + x;
+                float z1 = baseZ + z;
+                float x2 = baseX + Math.min(x + step, Chunk.SIZE);
+                float z2 = baseZ + Math.min(z + step, Chunk.SIZE);
+                float top = baseY + h + 1;
+                float[] color = colorFor(types[ix][iz]);
+                // top face
+                addFace(data, color, x1, top, z2, x2, top, z2, x2, top, z1, x1, top, z1);
+
+                float[] sideColor = shade(color, 0.8f);
+                // east
+                int he = (ix == cells - 1) ? -1 : heights[ix + 1][iz];
+                if (h > he) {
+                    float bottom = baseY + (he >= 0 ? he + 1 : 0);
+                    addFace(data, sideColor, x2, bottom, z2, x2, bottom, z1, x2, top, z1, x2, top, z2);
+                }
+                // west
+                int hw = (ix == 0) ? -1 : heights[ix - 1][iz];
+                if (h > hw) {
+                    float bottom = baseY + (hw >= 0 ? hw + 1 : 0);
+                    addFace(data, sideColor, x1, bottom, z1, x1, bottom, z2, x1, top, z2, x1, top, z1);
+                }
+                // south
+                int hs = (iz == cells - 1) ? -1 : heights[ix][iz + 1];
+                if (h > hs) {
+                    float bottom = baseY + (hs >= 0 ? hs + 1 : 0);
+                    addFace(data, sideColor, x1, bottom, z2, x2, bottom, z2, x2, top, z2, x1, top, z2);
+                }
+                // north
+                int hn = (iz == 0) ? -1 : heights[ix][iz - 1];
+                if (h > hn) {
+                    float bottom = baseY + (hn >= 0 ? hn + 1 : 0);
+                    addFace(data, sideColor, x2, bottom, z1, x1, bottom, z1, x1, top, z1, x2, top, z1);
+                }
+            }
+        }
 
         FloatBuffer buf = BufferUtils.createFloatBuffer(data.size());
         for (Float f : data) {
@@ -311,6 +410,21 @@ public class ChunkMesh {
      * Releases the underlying GL resources.
      */
     public void dispose() {
-        glDeleteBuffers(vbo);
+        if (glfwGetCurrentContext() != NULL) {
+            glDeleteBuffers(vbo);
+        } else {
+            pendingDeletes.add(vbo);
+        }
+    }
+
+    /**
+     * Deletes any queued VBOs on the current OpenGL context. Should be invoked
+     * on the render thread each frame.
+     */
+    public static void flushDeletes() {
+        Integer id;
+        while ((id = pendingDeletes.poll()) != null) {
+            glDeleteBuffers(id);
+        }
     }
 }
