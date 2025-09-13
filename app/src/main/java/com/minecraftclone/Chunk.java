@@ -14,6 +14,7 @@ public class Chunk {
     private ChunkMesh mesh;
     private final Map<Integer, ChunkMesh> lodMeshes = new HashMap<>();
     private final Set<Integer> emptyLodSteps = new HashSet<>();
+    private final Set<Integer> dirtyLodSteps = new HashSet<>();
     private boolean dirty = true;
     // whether the chunk's block data differs from its last on-disk save
     private boolean needsSave = true;
@@ -80,7 +81,11 @@ public class Chunk {
     }
 
     public void setLodMesh(int step, ChunkMesh mesh) {
-        lodMeshes.put(step, mesh);
+        ChunkMesh old = lodMeshes.put(step, mesh);
+        if (old != null) {
+            old.dispose();
+        }
+        dirtyLodSteps.remove(step);
     }
 
     public boolean isLodStepEmpty(int step) {
@@ -89,10 +94,12 @@ public class Chunk {
 
     public void markLodStepEmpty(int step) {
         emptyLodSteps.add(step);
+        dirtyLodSteps.remove(step);
     }
 
     public void clearEmptyLodSteps() {
         emptyLodSteps.clear();
+        dirtyLodSteps.clear();
     }
 
     public Origin getOrigin() {
@@ -106,7 +113,8 @@ public class Chunk {
     /** Marks the chunk as needing its mesh rebuilt. */
     public void markDirty() {
         this.dirty = true;
-        clearLods();
+        dirtyLodSteps.addAll(lodMeshes.keySet());
+        emptyLodSteps.clear();
     }
 
     private void clearLods() {
@@ -115,6 +123,11 @@ public class Chunk {
         }
         lodMeshes.clear();
         emptyLodSteps.clear();
+        dirtyLodSteps.clear();
+    }
+
+    public boolean isLodStepDirty(int step) {
+        return dirtyLodSteps.contains(step);
     }
 
     private void check(int x, int y, int z) {

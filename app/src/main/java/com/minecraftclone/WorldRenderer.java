@@ -220,7 +220,8 @@ public class WorldRenderer {
             return;
         }
         ChunkMesh mesh = chunk.getLodMesh(step);
-        if (mesh != null) {
+        boolean dirty = chunk.isLodStepDirty(step);
+        if (mesh != null && !dirty) {
             mesh.render();
             return;
         }
@@ -235,6 +236,9 @@ public class WorldRenderer {
                 }
                 pendingLods.remove(key);
             });
+        }
+        if (mesh != null) {
+            mesh.render();
         }
     }
 
