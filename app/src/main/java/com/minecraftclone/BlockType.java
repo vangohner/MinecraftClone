@@ -7,7 +7,11 @@ public enum BlockType {
     AIR(' '),
     DIRT('D'),
     GRASS('G'),
-    STONE('S');
+    STONE('S'),
+    SAND('A'),
+    WATER('W'),
+    SNOW('N'),
+    ICE('I');
 
     private final char display;
 

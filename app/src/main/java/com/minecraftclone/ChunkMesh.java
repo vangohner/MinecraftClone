@@ -411,6 +411,10 @@ public class ChunkMesh {
             case GRASS -> new float[] { 0.235f, 0.69f, 0.26f };
             case DIRT -> new float[] { 0.545f, 0.27f, 0.075f };
             case STONE -> new float[] { 0.5f, 0.5f, 0.5f };
+            case SAND -> new float[] { 0.96f, 0.87f, 0.7f };
+            case WATER -> new float[] { 0f, 0.3f, 0.8f };
+            case SNOW -> new float[] { 1f, 1f, 1f };
+            case ICE -> new float[] { 0.75f, 0.94f, 1f };
             default -> new float[] { 1f, 1f, 1f };
         };
     }
