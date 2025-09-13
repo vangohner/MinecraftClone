@@ -21,14 +21,24 @@ public class World {
     private final ExecutorService workers = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
     private final ChunkGenerator generator;
     private final Path saveDir;
+    private final boolean debug;
 
     public World(ChunkGenerator generator) {
-        this(generator, Path.of("world"));
+        this(generator, Path.of("world"), false);
+    }
+
+    public World(ChunkGenerator generator, boolean debug) {
+        this(generator, Path.of("world"), debug);
     }
 
     public World(ChunkGenerator generator, Path saveDir) {
+        this(generator, saveDir, false);
+    }
+
+    public World(ChunkGenerator generator, Path saveDir, boolean debug) {
         this.generator = generator;
         this.saveDir = saveDir;
+        this.debug = debug;
         try {
             Files.createDirectories(saveDir);
         } catch (IOException e) {
@@ -47,10 +57,15 @@ public class World {
         return chunks.computeIfAbsent(pos, p -> {
             Chunk chunk = loadChunk(p.x(), p.y(), p.z());
             if (chunk == null) {
+                if (debug) {
+                    System.out.println("Generating chunk " + p.x() + "," + p.y() + "," + p.z());
+                }
                 chunk = new Chunk();
                 if (generator != null) {
                     generator.generate(this, p.x(), p.y(), p.z(), chunk);
                 }
+            } else if (debug) {
+                System.out.println("Loaded chunk " + p.x() + "," + p.y() + "," + p.z());
             }
             markNeighborsDirty(p.x(), p.y(), p.z());
             return chunk;
