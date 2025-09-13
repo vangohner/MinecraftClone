@@ -201,10 +201,14 @@ public class WorldRenderer {
     private void renderLod(Chunk chunk, int baseX, int baseY, int baseZ, int step) {
         ChunkMesh mesh = chunk.getLodMesh(step);
         if (mesh == null) {
-            mesh = ChunkMesh.buildLod(chunk, baseX, baseY, baseZ, step);
-            chunk.setLodMesh(step, mesh);
+            mesh = ChunkMesh.buildLod(world, chunk, baseX, baseY, baseZ, step);
+            if (mesh != null) {
+                chunk.setLodMesh(step, mesh);
+            }
         }
-        mesh.render();
+        if (mesh != null) {
+            mesh.render();
+        }
     }
 
     private void renderChunkDebug(Chunk chunk, int baseX, int baseY, int baseZ) {

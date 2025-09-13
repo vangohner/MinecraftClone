@@ -44,9 +44,12 @@ public class ChunkMesh {
      * step values result in fewer quads and are suited for distant LOD
      * rendering.
      */
-    public static ChunkMesh buildLod(Chunk chunk, int baseX, int baseY, int baseZ, int step) {
-        FloatBuffer buffer = buildLodBuffer(chunk, baseX, baseY, baseZ, step);
+    public static ChunkMesh buildLod(World world, Chunk chunk, int baseX, int baseY, int baseZ, int step) {
+        FloatBuffer buffer = buildLodBuffer(world, chunk, baseX, baseY, baseZ, step);
         int vertexCount = buffer.limit() / 6;
+        if (vertexCount == 0) {
+            return null;
+        }
         int vbo = glGenBuffers();
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferData(GL_ARRAY_BUFFER, buffer, GL_STATIC_DRAW);
@@ -73,7 +76,7 @@ public class ChunkMesh {
         return buf;
     }
 
-    private static FloatBuffer buildLodBuffer(Chunk chunk, int baseX, int baseY, int baseZ, int step) {
+    private static FloatBuffer buildLodBuffer(World world, Chunk chunk, int baseX, int baseY, int baseZ, int step) {
         List<Float> data = new ArrayList<>();
         int cells = (Chunk.SIZE + step - 1) / step;
         int[][] heights = new int[cells][cells];
@@ -86,7 +89,7 @@ public class ChunkMesh {
                     for (int dz = 0; dz < step && z + dz < Chunk.SIZE; dz++) {
                         for (int y = Chunk.SIZE - 1; y >= 0; y--) {
                             BlockType t = chunk.getBlock(x + dx, y, z + dz);
-                            if (t != BlockType.AIR) {
+                            if (t != BlockType.AIR && isAirForLod(world, baseX + x + dx, baseY + y + 1, baseZ + z + dz)) {
                                 if (y > topY) {
                                     topY = y;
                                     topType = t;
@@ -375,6 +378,20 @@ public class ChunkMesh {
         if (chunk == null) {
             // Treat missing chunks as solid to avoid temporary seams.
             return false;
+        }
+        int lx = Math.floorMod(x, Chunk.SIZE);
+        int ly = Math.floorMod(y, Chunk.SIZE);
+        int lz = Math.floorMod(z, Chunk.SIZE);
+        return chunk.getBlock(lx, ly, lz) == BlockType.AIR;
+    }
+
+    private static boolean isAirForLod(World world, int x, int y, int z) {
+        int cx = Math.floorDiv(x, Chunk.SIZE);
+        int cy = Math.floorDiv(y, Chunk.SIZE);
+        int cz = Math.floorDiv(z, Chunk.SIZE);
+        Chunk chunk = world.getChunkIfLoaded(cx, cy, cz);
+        if (chunk == null) {
+            return true;
         }
         int lx = Math.floorMod(x, Chunk.SIZE);
         int ly = Math.floorMod(y, Chunk.SIZE);
