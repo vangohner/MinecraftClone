@@ -12,6 +12,7 @@ public class Chunk {
     private ChunkMesh mesh;
     private final Map<Integer, ChunkMesh> lodMeshes = new HashMap<>();
     private boolean dirty = true;
+    // whether the chunk's block data differs from its last on-disk save
     private boolean needsSave = true;
     public enum Origin { GENERATED, LOADED }
     private Origin origin = Origin.GENERATED;
@@ -53,6 +54,7 @@ public class Chunk {
         return dirty;
     }
 
+    /** Returns {@code true} if the chunk's blocks have changed since the last disk save. */
     public boolean needsSave() {
         return needsSave;
     }

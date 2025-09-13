@@ -48,10 +48,11 @@ java -jar app/build/libs/app.jar
 
 ## World Saving
 
-Generated chunks are immediately written as simple binary files inside the
-`world/` directory. On shutdown, only chunks modified since their last save are
-written again, with progress and an estimated remaining time so you know why the
-application stays open.
+Chunks persist to disk as you play. Newly generated chunks are written
+immediately to the `world/` directory, and any chunk whose blocks change is
+saved again right after the modification. When the game shuts down, it flushes
+any remaining chunks whose data differs from the last save and reports progress
+so you know why the application stays open.
 
 ## Debugging
 

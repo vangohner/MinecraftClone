@@ -128,11 +128,16 @@ public class World {
     }
 
     /**
-     * Sets a block at world coordinates.
+     * Sets a block at world coordinates and writes the enclosing chunk back to disk.
      */
     public void setBlock(int x, int y, int z, BlockType type) {
-        Chunk chunk = getChunk(worldToChunk(x), worldToChunk(y), worldToChunk(z));
+        int cx = worldToChunk(x);
+        int cy = worldToChunk(y);
+        int cz = worldToChunk(z);
+        Chunk chunk = getChunk(cx, cy, cz);
         chunk.setBlock(mod(x), mod(y), mod(z), type);
+        // persist the chunk immediately so modifications survive crashes
+        saveChunk(cx, cy, cz);
     }
 
     /**
@@ -148,7 +153,7 @@ public class World {
         saveAll();
     }
 
-    /** Saves all currently loaded chunks to disk with progress output. */
+    /** Saves all loaded chunks whose data changed since the last write, with progress output. */
     public void saveAll() {
         var positions = new ArrayList<ChunkPos>();
         for (var pos : chunks.keySet()) {
@@ -174,7 +179,7 @@ public class World {
         System.out.println("Finished saving chunks.");
     }
 
-    /** Saves a single chunk if it is loaded. */
+    /** Saves a single chunk if it has unsaved changes. */
     public void saveChunk(int cx, int cy, int cz) {
         Chunk chunk = getChunkIfLoaded(cx, cy, cz);
         if (chunk == null || !chunk.needsSave()) {
