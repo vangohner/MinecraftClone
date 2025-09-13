@@ -10,7 +10,9 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.Comparator;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.RejectedExecutionException;
@@ -22,6 +24,7 @@ public class World {
     private final Map<ChunkPos, Chunk> chunks = new ConcurrentHashMap<>();
     private final Set<ChunkPos> pending = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final ThreadPoolExecutor workers;
+    private final int maxQueueSize;
     private final ChunkGenerator generator;
     private final Path saveDir;
     private final boolean debug;
@@ -43,12 +46,15 @@ public class World {
         this.saveDir = saveDir;
         this.debug = debug;
         int threads = Runtime.getRuntime().availableProcessors();
+        this.maxQueueSize = threads * 4;
+        BlockingQueue<Runnable> queue = new PriorityBlockingQueue<>(maxQueueSize,
+                Comparator.comparingInt(r -> ((ChunkRequest) r).distanceSq));
         this.workers = new ThreadPoolExecutor(
                 threads,
                 threads,
                 0L,
                 TimeUnit.MILLISECONDS,
-                new LinkedBlockingQueue<>(threads * 4)); // bounded queue prevents huge backlogs
+                queue);
         try {
             Files.createDirectories(saveDir);
         } catch (IOException e) {
@@ -101,27 +107,50 @@ public class World {
 
     /**
      * Queues asynchronous generation for the specified chunk if it has not been
-     * loaded yet. Multiple requests for the same chunk are coalesced.
+     * loaded yet. Multiple requests for the same chunk are coalesced. The player
+     * chunk coordinates are provided so requests can be prioritized by proximity.
      */
-    public void requestChunk(int cx, int cy, int cz) {
+    public void requestChunk(int cx, int cy, int cz, int pcx, int pcy, int pcz) {
         ChunkPos pos = new ChunkPos(cx, cy, cz);
         if (chunks.containsKey(pos) || pending.contains(pos)) {
             return;
         }
-        if (workers.getQueue().remainingCapacity() == 0) {
+        if (workers.getQueue().size() >= maxQueueSize) {
             return; // Too many pending tasks, drop this request.
         }
+        int dx = cx - pcx;
+        int dy = cy - pcy;
+        int dz = cz - pcz;
+        int distSq = dx * dx + dy * dy + dz * dz;
         pending.add(pos);
         try {
-            workers.submit(() -> {
-                try {
-                    getChunk(cx, cy, cz);
-                } finally {
-                    pending.remove(pos);
-                }
-            });
+            workers.execute(new ChunkRequest(cx, cy, cz, pos, distSq));
         } catch (RejectedExecutionException e) {
             pending.remove(pos); // Executor shutting down or queue full; drop the task.
+        }
+    }
+
+    /** Simple task wrapper carrying distance information for prioritization. */
+    private class ChunkRequest implements Runnable {
+        final int cx, cy, cz;
+        final ChunkPos pos;
+        final int distanceSq;
+
+        ChunkRequest(int cx, int cy, int cz, ChunkPos pos, int distanceSq) {
+            this.cx = cx;
+            this.cy = cy;
+            this.cz = cz;
+            this.pos = pos;
+            this.distanceSq = distanceSq;
+        }
+
+        @Override
+        public void run() {
+            try {
+                getChunk(cx, cy, cz);
+            } finally {
+                pending.remove(pos);
+            }
         }
     }
 

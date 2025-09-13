@@ -5,6 +5,9 @@ import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.system.MemoryUtil.NULL;
 
 import java.nio.FloatBuffer;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.Callbacks;
@@ -113,44 +116,57 @@ public class WorldRenderer {
         int playerChunkZ = (int) Math.floor(player.getZ() / Chunk.SIZE);
         int radius = renderDistance;
 
+        List<int[]> positions = new ArrayList<>();
         for (int cx = playerChunkX - radius; cx <= playerChunkX + radius; cx++) {
-            int baseX = cx * Chunk.SIZE;
             for (int cy = playerChunkY - radius; cy <= playerChunkY + radius; cy++) {
-                int baseY = cy * Chunk.SIZE;
                 for (int cz = playerChunkZ - radius; cz <= playerChunkZ + radius; cz++) {
-                    int baseZ = cz * Chunk.SIZE;
-                    if (!boxInFrustum(baseX, baseY, baseZ,
-                            baseX + Chunk.SIZE, baseY + Chunk.SIZE, baseZ + Chunk.SIZE)) {
-                        continue;
-                    }
-                    world.requestChunk(cx, cy, cz);
-                    Chunk chunk = world.getChunkIfLoaded(cx, cy, cz);
-                    if (chunk == null) {
-                        continue;
-                    }
-                    int dist = Math.max(Math.max(Math.abs(cx - playerChunkX), Math.abs(cy - playerChunkY)),
-                            Math.abs(cz - playerChunkZ));
-                    if (dist > lod2Start) {
-                        renderLod(chunk, baseX, baseY, baseZ, LOD2_STEP);
-                    } else if (dist > lod1Start) {
-                        renderLod(chunk, baseX, baseY, baseZ, LOD1_STEP);
-                    } else {
-                        if (chunk.isDirty() || chunk.getMesh() == null) {
-                            ChunkMesh old = chunk.getMesh();
-                            if (old != null) {
-                                old.dispose();
-                            }
-                            chunk.setMesh(ChunkMesh.build(world, chunk, baseX, baseY, baseZ));
-                        }
-                        ChunkMesh mesh = chunk.getMesh();
-                        if (mesh != null) {
-                            mesh.render();
-                        }
-                    }
-                    if (world.isDebug()) {
-                        renderChunkDebug(chunk, baseX, baseY, baseZ);
-                    }
+                    int dx = cx - playerChunkX;
+                    int dy = cy - playerChunkY;
+                    int dz = cz - playerChunkZ;
+                    int distSq = dx * dx + dy * dy + dz * dz;
+                    positions.add(new int[] { cx, cy, cz, distSq });
                 }
+            }
+        }
+        positions.sort(Comparator.comparingInt(p -> p[3]));
+
+        for (int[] p : positions) {
+            int cx = p[0];
+            int cy = p[1];
+            int cz = p[2];
+            int baseX = cx * Chunk.SIZE;
+            int baseY = cy * Chunk.SIZE;
+            int baseZ = cz * Chunk.SIZE;
+            if (!boxInFrustum(baseX, baseY, baseZ,
+                    baseX + Chunk.SIZE, baseY + Chunk.SIZE, baseZ + Chunk.SIZE)) {
+                continue;
+            }
+            world.requestChunk(cx, cy, cz, playerChunkX, playerChunkY, playerChunkZ);
+            Chunk chunk = world.getChunkIfLoaded(cx, cy, cz);
+            if (chunk == null) {
+                continue;
+            }
+            int dist = Math.max(Math.max(Math.abs(cx - playerChunkX), Math.abs(cy - playerChunkY)),
+                    Math.abs(cz - playerChunkZ));
+            if (dist > lod2Start) {
+                renderLod(chunk, baseX, baseY, baseZ, LOD2_STEP);
+            } else if (dist > lod1Start) {
+                renderLod(chunk, baseX, baseY, baseZ, LOD1_STEP);
+            } else {
+                if (chunk.isDirty() || chunk.getMesh() == null) {
+                    ChunkMesh old = chunk.getMesh();
+                    if (old != null) {
+                        old.dispose();
+                    }
+                    chunk.setMesh(ChunkMesh.build(world, chunk, baseX, baseY, baseZ));
+                }
+                ChunkMesh mesh = chunk.getMesh();
+                if (mesh != null) {
+                    mesh.render();
+                }
+            }
+            if (world.isDebug()) {
+                renderChunkDebug(chunk, baseX, baseY, baseZ);
             }
         }
     }
