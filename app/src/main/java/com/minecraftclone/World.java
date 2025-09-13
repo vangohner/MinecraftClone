@@ -247,6 +247,7 @@ public class World {
                 }
             }
             chunk.markSaved();
+            chunk.clearEmptyLodSteps();
         } catch (IOException e) {
             System.err.println("Failed to save chunk " + cx + "," + cy + "," + cz + ": " + e.getMessage());
         }
@@ -269,6 +270,7 @@ public class World {
                 }
             }
             chunk.markSaved();
+            chunk.clearEmptyLodSteps();
         } catch (IOException e) {
             System.err.println("Failed to load chunk " + cx + "," + cy + "," + cz + ": " + e.getMessage());
             return null;

@@ -8,6 +8,13 @@ import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Queue;
+import java.util.Set;
+import java.util.Collections;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.Callbacks;
@@ -44,6 +51,10 @@ public class WorldRenderer {
     /** Tracks whether the F3 key is currently pressed for debug shortcuts. */
     private boolean debugShortcutActive;
 
+    private final ExecutorService lodWorkers;
+    private final Set<LodKey> pendingLods;
+    private final Queue<LodResult> completedLods;
+
     /** View frustum planes computed each frame. Each plane is stored as [A,B,C,D]. */
     private final float[][] frustum = new float[6][4];
     // TODO: Track visible neighbors for occlusion culling.
@@ -56,6 +67,10 @@ public class WorldRenderer {
         this.lod2Start = lod2Start;
         this.showChunkBorders = world.isDebug();
         this.showCoordinates = world.isDebug();
+        int threads = Math.max(1, Runtime.getRuntime().availableProcessors() - 1);
+        this.lodWorkers = Executors.newFixedThreadPool(threads);
+        this.pendingLods = Collections.newSetFromMap(new ConcurrentHashMap<>());
+        this.completedLods = new ConcurrentLinkedQueue<>();
     }
 
     /** Launches the rendering loop. */
@@ -63,6 +78,7 @@ public class WorldRenderer {
         init();
         loop();
         world.shutdown();
+        lodWorkers.shutdown();
         Callbacks.glfwFreeCallbacks(window);
         glfwDestroyWindow(window);
         glfwTerminate();
@@ -138,6 +154,7 @@ public class WorldRenderer {
     }
 
     private void renderBlocks() {
+        processLodResults();
         int playerChunkX = (int) Math.floor(player.getX() / Chunk.SIZE);
         int playerChunkY = (int) Math.floor(player.getY() / Chunk.SIZE);
         int playerChunkZ = (int) Math.floor(player.getZ() / Chunk.SIZE);
@@ -199,12 +216,76 @@ public class WorldRenderer {
     }
 
     private void renderLod(Chunk chunk, int baseX, int baseY, int baseZ, int step) {
-        ChunkMesh mesh = chunk.getLodMesh(step);
-        if (mesh == null) {
-            mesh = ChunkMesh.buildLod(chunk, baseX, baseY, baseZ, step);
-            chunk.setLodMesh(step, mesh);
+        if (chunk.isLodStepEmpty(step)) {
+            return;
         }
-        mesh.render();
+        ChunkMesh mesh = chunk.getLodMesh(step);
+        boolean dirty = chunk.isLodStepDirty(step);
+        if (mesh != null && !dirty) {
+            mesh.render();
+            return;
+        }
+        LodKey key = new LodKey(chunk, step);
+        if (pendingLods.add(key)) {
+            lodWorkers.submit(() -> {
+                FloatBuffer buf = ChunkMesh.buildLodBuffer(world, chunk, baseX, baseY, baseZ, step);
+                if (buf.limit() == 0) {
+                    completedLods.add(new LodResult(chunk, step, null));
+                } else {
+                    completedLods.add(new LodResult(chunk, step, buf));
+                }
+                pendingLods.remove(key);
+            });
+        }
+        if (mesh != null) {
+            mesh.render();
+        }
+    }
+
+    private void processLodResults() {
+        LodResult res;
+        while ((res = completedLods.poll()) != null) {
+            if (res.buffer == null) {
+                res.chunk.markLodStepEmpty(res.step);
+            } else {
+                ChunkMesh mesh = ChunkMesh.upload(res.buffer);
+                res.chunk.setLodMesh(res.step, mesh);
+            }
+        }
+    }
+
+    private static class LodKey {
+        final Chunk chunk;
+        final int step;
+
+        LodKey(Chunk chunk, int step) {
+            this.chunk = chunk;
+            this.step = step;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof LodKey other)) return false;
+            return chunk == other.chunk && step == other.step;
+        }
+
+        @Override
+        public int hashCode() {
+            return System.identityHashCode(chunk) * 31 + step;
+        }
+    }
+
+    private static class LodResult {
+        final Chunk chunk;
+        final int step;
+        final FloatBuffer buffer;
+
+        LodResult(Chunk chunk, int step, FloatBuffer buffer) {
+            this.chunk = chunk;
+            this.step = step;
+            this.buffer = buffer;
+        }
     }
 
     private void renderChunkDebug(Chunk chunk, int baseX, int baseY, int baseZ) {
