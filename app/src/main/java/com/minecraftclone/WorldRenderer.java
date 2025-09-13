@@ -146,6 +146,9 @@ public class WorldRenderer {
                             mesh.render();
                         }
                     }
+                    if (world.isDebug()) {
+                        renderChunkDebug(chunk, baseX, baseY, baseZ);
+                    }
                 }
             }
         }
@@ -158,6 +161,42 @@ public class WorldRenderer {
             chunk.setLodMesh(step, mesh);
         }
         mesh.render();
+    }
+
+    private void renderChunkDebug(Chunk chunk, int baseX, int baseY, int baseZ) {
+        float r, g, b;
+        if (chunk.getOrigin() == Chunk.Origin.LOADED) {
+            r = 0f; g = 1f; b = 0f; // green for loaded
+        } else {
+            r = 1f; g = 0f; b = 0f; // red for generated
+        }
+        glDisable(GL_DEPTH_TEST);
+        glColor3f(r, g, b);
+        glBegin(GL_LINES);
+        float x1 = baseX;
+        float y1 = baseY;
+        float z1 = baseZ;
+        float x2 = baseX + Chunk.SIZE;
+        float y2 = baseY + Chunk.SIZE;
+        float z2 = baseZ + Chunk.SIZE;
+        // bottom square
+        glVertex3f(x1, y1, z1); glVertex3f(x2, y1, z1);
+        glVertex3f(x2, y1, z1); glVertex3f(x2, y1, z2);
+        glVertex3f(x2, y1, z2); glVertex3f(x1, y1, z2);
+        glVertex3f(x1, y1, z2); glVertex3f(x1, y1, z1);
+        // top square
+        glVertex3f(x1, y2, z1); glVertex3f(x2, y2, z1);
+        glVertex3f(x2, y2, z1); glVertex3f(x2, y2, z2);
+        glVertex3f(x2, y2, z2); glVertex3f(x1, y2, z2);
+        glVertex3f(x1, y2, z2); glVertex3f(x1, y2, z1);
+        // vertical edges
+        glVertex3f(x1, y1, z1); glVertex3f(x1, y2, z1);
+        glVertex3f(x2, y1, z1); glVertex3f(x2, y2, z1);
+        glVertex3f(x2, y1, z2); glVertex3f(x2, y2, z2);
+        glVertex3f(x1, y1, z2); glVertex3f(x1, y2, z2);
+        glEnd();
+        glColor3f(1f, 1f, 1f);
+        glEnable(GL_DEPTH_TEST);
     }
 
     /** Extracts the six view frustum planes from the current projection and modelview matrices. */

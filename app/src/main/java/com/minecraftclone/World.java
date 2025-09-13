@@ -61,15 +61,22 @@ public class World {
                     System.out.println("Generating chunk " + p.x() + "," + p.y() + "," + p.z());
                 }
                 chunk = new Chunk();
+                chunk.setOrigin(Chunk.Origin.GENERATED);
                 if (generator != null) {
                     generator.generate(this, p.x(), p.y(), p.z(), chunk);
                 }
-            } else if (debug) {
-                System.out.println("Loaded chunk " + p.x() + "," + p.y() + "," + p.z());
+            } else {
+                if (debug) {
+                    System.out.println("Loaded chunk " + p.x() + "," + p.y() + "," + p.z());
+                }
             }
             markNeighborsDirty(p.x(), p.y(), p.z());
             return chunk;
         });
+    }
+
+    public boolean isDebug() {
+        return debug;
     }
 
     /**
@@ -164,6 +171,7 @@ public class World {
             return null;
         }
         Chunk chunk = new Chunk();
+        chunk.setOrigin(Chunk.Origin.LOADED);
         try (DataInputStream in = new DataInputStream(Files.newInputStream(path))) {
             for (int x = 0; x < Chunk.SIZE; x++) {
                 for (int y = 0; y < Chunk.SIZE; y++) {

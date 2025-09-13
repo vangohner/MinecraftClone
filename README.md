@@ -53,6 +53,6 @@ and are automatically loaded on startup and saved on shutdown.
 
 ## Debugging
 
-Pass `--debug-chunks` as a command-line argument to log when chunks are generated or loaded. This can help verify that world generation is running as expected.
+Pass `--debug-chunks` as a command-line argument to log when chunks are generated or loaded. When enabled, generated chunks are outlined in red while those loaded from disk are shown in green, making it easy to spot persistence issues.
 
 This is only the first step toward a full clone. Future work will include richer rendering, input handling, world generation and more.

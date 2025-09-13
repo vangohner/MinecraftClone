@@ -12,6 +12,8 @@ public class Chunk {
     private ChunkMesh mesh;
     private final Map<Integer, ChunkMesh> lodMeshes = new HashMap<>();
     private boolean dirty = true;
+    public enum Origin { GENERATED, LOADED }
+    private Origin origin = Origin.GENERATED;
 
     public Chunk() {
         // initialize all blocks to AIR
@@ -64,6 +66,14 @@ public class Chunk {
 
     public void setLodMesh(int step, ChunkMesh mesh) {
         lodMeshes.put(step, mesh);
+    }
+
+    public Origin getOrigin() {
+        return origin;
+    }
+
+    void setOrigin(Origin origin) {
+        this.origin = origin;
     }
 
     /** Marks the chunk as needing its mesh rebuilt. */
