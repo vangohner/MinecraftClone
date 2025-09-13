@@ -37,6 +37,10 @@ public class WorldRenderer {
     private long window;
     private double lastMouseX;
     private double lastMouseY;
+    /** Whether chunk borders should be outlined. */
+    private boolean showChunkBorders;
+    /** Tracks whether the F3 key is currently pressed for debug shortcuts. */
+    private boolean debugShortcutActive;
 
     /** View frustum planes computed each frame. Each plane is stored as [A,B,C,D]. */
     private final float[][] frustum = new float[6][4];
@@ -48,6 +52,7 @@ public class WorldRenderer {
         this.renderDistance = renderDistance;
         this.lod1Start = lod1Start;
         this.lod2Start = lod2Start;
+        this.showChunkBorders = world.isDebug();
     }
 
     /** Launches the rendering loop. */
@@ -180,7 +185,7 @@ public class WorldRenderer {
                     mesh.render();
                 }
             }
-            if (world.isDebug()) {
+            if (showChunkBorders) {
                 renderChunkDebug(chunk, baseX, baseY, baseZ);
             }
         }
@@ -335,9 +340,26 @@ public class WorldRenderer {
     }
 
     private void handleKey(long window, int key, int scancode, int action, int mods) {
+        // Handle F3 separately so we can track key release.
+        if (key == GLFW_KEY_F3) {
+            if (action == GLFW_PRESS) {
+                debugShortcutActive = true;
+            } else if (action == GLFW_RELEASE) {
+                debugShortcutActive = false;
+            }
+            return;
+        }
+
         if (action != GLFW_PRESS && action != GLFW_REPEAT) {
             return;
         }
+
+        if (key == GLFW_KEY_G && debugShortcutActive) {
+            showChunkBorders = !showChunkBorders;
+            System.out.println("Chunk borders " + (showChunkBorders ? "enabled" : "disabled"));
+            return;
+        }
+
         switch (key) {
             case GLFW_KEY_LEFT -> player.rotate(0.1);
             case GLFW_KEY_RIGHT -> player.rotate(-0.1);
