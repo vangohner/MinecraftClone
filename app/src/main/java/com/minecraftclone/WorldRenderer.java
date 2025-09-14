@@ -65,7 +65,6 @@ public class WorldRenderer {
 
     /** View frustum planes computed each frame. Each plane is stored as [A,B,C,D]. */
     private final float[][] frustum = new float[6][4];
-    // TODO: Track visible neighbors for occlusion culling.
 
     public WorldRenderer(World world, Player player, int renderDistance, int lod1Start, int lod2Start) {
         this.world = world;
@@ -202,9 +201,12 @@ public class WorldRenderer {
                     baseX + Chunk.SIZE, baseY + Chunk.SIZE, baseZ + Chunk.SIZE)) {
                 continue;
             }
+            if (world.isChunkOccluded(cx, cy, cz)) {
+                continue;
+            }
             world.requestChunk(cx, cy, cz, playerChunkX, playerChunkY, playerChunkZ);
             Chunk chunk = world.getChunkIfLoaded(cx, cy, cz);
-            if (chunk == null) {
+            if (chunk == null || chunk.isOccluded()) {
                 continue;
             }
             int dist = Math.max(Math.max(Math.abs(cx - playerChunkX), Math.abs(cy - playerChunkY)),
