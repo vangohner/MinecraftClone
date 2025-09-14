@@ -20,6 +20,10 @@ public class Chunk {
     private boolean needsSave = true;
     public enum Origin { GENERATED, LOADED }
     private Origin origin = Origin.GENERATED;
+    /** True if every block on each of the six faces is solid. Indexed as +X,-X,+Y,-Y,+Z,-Z. */
+    private final boolean[] solidFaces = new boolean[6];
+    /** Whether this chunk is completely hidden by neighbors. */
+    private boolean occluded;
 
     public Chunk() {
         // initialize all blocks to AIR
@@ -128,6 +132,82 @@ public class Chunk {
 
     public boolean isLodStepDirty(int step) {
         return dirtyLodSteps.contains(step);
+    }
+
+    /** Recomputes whether each face of the chunk is fully solid. */
+    public void updateFaceSolidity() {
+        // +X face
+        solidFaces[0] = true;
+        outer0: for (int y = 0; y < SIZE; y++) {
+            for (int z = 0; z < SIZE; z++) {
+                if (blocks[SIZE - 1][y][z] == BlockType.AIR) {
+                    solidFaces[0] = false;
+                    break outer0;
+                }
+            }
+        }
+        // -X face
+        solidFaces[1] = true;
+        outer1: for (int y = 0; y < SIZE; y++) {
+            for (int z = 0; z < SIZE; z++) {
+                if (blocks[0][y][z] == BlockType.AIR) {
+                    solidFaces[1] = false;
+                    break outer1;
+                }
+            }
+        }
+        // +Y face
+        solidFaces[2] = true;
+        outer2: for (int x = 0; x < SIZE; x++) {
+            for (int z = 0; z < SIZE; z++) {
+                if (blocks[x][SIZE - 1][z] == BlockType.AIR) {
+                    solidFaces[2] = false;
+                    break outer2;
+                }
+            }
+        }
+        // -Y face
+        solidFaces[3] = true;
+        outer3: for (int x = 0; x < SIZE; x++) {
+            for (int z = 0; z < SIZE; z++) {
+                if (blocks[x][0][z] == BlockType.AIR) {
+                    solidFaces[3] = false;
+                    break outer3;
+                }
+            }
+        }
+        // +Z face
+        solidFaces[4] = true;
+        outer4: for (int x = 0; x < SIZE; x++) {
+            for (int y = 0; y < SIZE; y++) {
+                if (blocks[x][y][SIZE - 1] == BlockType.AIR) {
+                    solidFaces[4] = false;
+                    break outer4;
+                }
+            }
+        }
+        // -Z face
+        solidFaces[5] = true;
+        outer5: for (int x = 0; x < SIZE; x++) {
+            for (int y = 0; y < SIZE; y++) {
+                if (blocks[x][y][0] == BlockType.AIR) {
+                    solidFaces[5] = false;
+                    break outer5;
+                }
+            }
+        }
+    }
+
+    public boolean isFaceSolid(int face) {
+        return solidFaces[face];
+    }
+
+    public boolean isOccluded() {
+        return occluded;
+    }
+
+    public void setOccluded(boolean occluded) {
+        this.occluded = occluded;
     }
 
     private void check(int x, int y, int z) {

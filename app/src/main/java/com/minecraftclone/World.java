@@ -28,6 +28,9 @@ public class World {
     private final Path saveDir;
     private final boolean debug;
 
+    private static final int[][] DIRS = { {1,0,0}, {-1,0,0}, {0,1,0}, {0,-1,0}, {0,0,1}, {0,0,-1} };
+    private static final int[] OPPOSITE = {1,0,3,2,5,4};
+
     private static final int REGION_SIZE = 32;
     private static final int CHUNK_BYTES = Chunk.SIZE * Chunk.SIZE * Chunk.SIZE;
     private static final int REGION_CHUNK_COUNT = REGION_SIZE * REGION_SIZE * REGION_SIZE;
@@ -92,7 +95,9 @@ public class World {
                     System.out.println("Loaded chunk " + p.x() + "," + p.y() + "," + p.z());
                 }
             }
+            chunk.updateFaceSolidity();
             markNeighborsDirty(p.x(), p.y(), p.z());
+            updateVisibilityAround(p.x(), p.y(), p.z());
             return chunk;
         });
     }
@@ -185,6 +190,9 @@ public class World {
         int cz = worldToChunk(z);
         Chunk chunk = getChunk(cx, cy, cz);
         chunk.setBlock(mod(x), mod(y), mod(z), type);
+        chunk.updateFaceSolidity();
+        markNeighborsDirty(cx, cy, cz);
+        updateVisibilityAround(cx, cy, cz);
         // persist the chunk immediately so modifications survive crashes
         saveChunk(cx, cy, cz);
     }
@@ -307,6 +315,7 @@ public class World {
             }
             chunk.markSaved();
             chunk.clearEmptyLodSteps();
+            chunk.updateFaceSolidity();
         } catch (IOException e) {
             System.err.println("Failed to load chunk " + cx + "," + cy + "," + cz + ": " + e.getMessage());
             return null;
@@ -383,12 +392,52 @@ public class World {
     }
 
     private void markNeighborsDirty(int cx, int cy, int cz) {
-        int[][] dirs = { {1,0,0}, {-1,0,0}, {0,1,0}, {0,-1,0}, {0,0,1}, {0,0,-1} };
-        for (int[] d : dirs) {
+        for (int[] d : DIRS) {
             Chunk neighbor = getChunkIfLoaded(cx + d[0], cy + d[1], cz + d[2]);
             if (neighbor != null) {
                 neighbor.markDirty();
             }
         }
+    }
+
+    /** Updates occlusion state for the chunk at the given position and its neighbors. */
+    private void updateVisibilityAround(int cx, int cy, int cz) {
+        updateChunkVisibility(cx, cy, cz);
+        for (int[] d : DIRS) {
+            updateChunkVisibility(cx + d[0], cy + d[1], cz + d[2]);
+        }
+    }
+
+    private void updateChunkVisibility(int cx, int cy, int cz) {
+        Chunk chunk = getChunkIfLoaded(cx, cy, cz);
+        if (chunk == null) {
+            return;
+        }
+        boolean occ = true;
+        for (int i = 0; i < DIRS.length; i++) {
+            int[] d = DIRS[i];
+            Chunk n = getChunkIfLoaded(cx + d[0], cy + d[1], cz + d[2]);
+            if (n == null || !n.isFaceSolid(OPPOSITE[i])) {
+                occ = false;
+                break;
+            }
+        }
+        chunk.setOccluded(occ);
+    }
+
+    /** Returns {@code true} if the chunk at the position is fully hidden by neighbors. */
+    public boolean isChunkOccluded(int cx, int cy, int cz) {
+        Chunk chunk = getChunkIfLoaded(cx, cy, cz);
+        if (chunk != null) {
+            return chunk.isOccluded();
+        }
+        for (int i = 0; i < DIRS.length; i++) {
+            int[] d = DIRS[i];
+            Chunk n = getChunkIfLoaded(cx + d[0], cy + d[1], cz + d[2]);
+            if (n == null || !n.isFaceSolid(OPPOSITE[i])) {
+                return false;
+            }
+        }
+        return true;
     }
 }
