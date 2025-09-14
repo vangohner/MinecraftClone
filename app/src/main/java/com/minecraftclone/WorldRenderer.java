@@ -59,6 +59,11 @@ public class WorldRenderer {
     /** Tracks whether the F3 key is currently pressed for debug shortcuts. */
     private boolean debugShortcutActive;
 
+    /** Number of chunks rendered in the most recent frame. */
+    private int lastRenderedChunkCount;
+    /** Scratch counter reset each frame before rendering. */
+    private int renderedChunkCount;
+
     private final ExecutorService lodWorkers;
     private final Set<LodKey> pendingLods;
     private final Queue<LodResult> completedLods;
@@ -152,13 +157,14 @@ public class WorldRenderer {
             updateFrustum();
             renderBlocks();
             ChunkMesh.flushDeletes();
+            lastRenderedChunkCount = renderedChunkCount;
 
             glfwSwapBuffers(window);
             glfwPollEvents();
 
             frames++;
             if (now - fpsTimer >= 1.0) {
-                String title = "Minecraft Clone - FPS: " + frames;
+                String title = "Minecraft Clone - FPS: " + frames + " Chunks: " + lastRenderedChunkCount;
                 if (showCoordinates) {
                     title += String.format(" XYZ: %.2f / %.2f / %.2f", player.getX(), player.getY(), player.getZ());
                 }
@@ -171,6 +177,7 @@ public class WorldRenderer {
 
     private void renderBlocks() {
         processLodResults();
+        renderedChunkCount = 0;
         int playerChunkX = (int) Math.floor(player.getX() / Chunk.SIZE);
         int playerChunkY = (int) Math.floor(player.getY() / Chunk.SIZE);
         int playerChunkZ = (int) Math.floor(player.getZ() / Chunk.SIZE);
@@ -211,10 +218,11 @@ public class WorldRenderer {
             }
             int dist = Math.max(Math.max(Math.abs(cx - playerChunkX), Math.abs(cy - playerChunkY)),
                     Math.abs(cz - playerChunkZ));
+            boolean rendered = false;
             if (dist > lod2Start) {
-                renderLod(chunk, baseX, baseY, baseZ, LOD2_STEP);
+                rendered = renderLod(chunk, baseX, baseY, baseZ, LOD2_STEP);
             } else if (dist > lod1Start) {
-                renderLod(chunk, baseX, baseY, baseZ, LOD1_STEP);
+                rendered = renderLod(chunk, baseX, baseY, baseZ, LOD1_STEP);
             } else {
                 if (chunk.isDirty() || chunk.getMesh() == null) {
                     ChunkMesh old = chunk.getMesh();
@@ -226,7 +234,11 @@ public class WorldRenderer {
                 ChunkMesh mesh = chunk.getMesh();
                 if (mesh != null) {
                     mesh.render();
+                    rendered = true;
                 }
+            }
+            if (rendered) {
+                renderedChunkCount++;
             }
             if (showChunkBorders) {
                 renderChunkDebug(chunk, baseX, baseY, baseZ);
@@ -234,15 +246,15 @@ public class WorldRenderer {
         }
     }
 
-    private void renderLod(Chunk chunk, int baseX, int baseY, int baseZ, int step) {
+    private boolean renderLod(Chunk chunk, int baseX, int baseY, int baseZ, int step) {
         if (chunk.isLodStepEmpty(step)) {
-            return;
+            return false;
         }
         ChunkMesh mesh = chunk.getLodMesh(step);
         boolean dirty = chunk.isLodStepDirty(step);
         if (mesh != null && !dirty) {
             mesh.render();
-            return;
+            return true;
         }
         LodKey key = new LodKey(chunk, step);
         if (pendingLods.add(key)) {
@@ -258,7 +270,9 @@ public class WorldRenderer {
         }
         if (mesh != null) {
             mesh.render();
+            return true;
         }
+        return false;
     }
 
     private void processLodResults() {
