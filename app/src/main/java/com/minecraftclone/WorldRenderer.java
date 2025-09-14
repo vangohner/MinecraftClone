@@ -2,14 +2,17 @@ package com.minecraftclone;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL15.*;
 import static org.lwjgl.system.MemoryUtil.NULL;
 
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import java.util.HashMap;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -71,6 +74,9 @@ public class WorldRenderer {
     /** View frustum planes computed each frame. Each plane is stored as [A,B,C,D]. */
     private final float[][] frustum = new float[6][4];
 
+    /** Occlusion query state per chunk. */
+    private final Map<Chunk, ChunkRenderData> chunkQueries = new HashMap<>();
+
     public WorldRenderer(World world, Player player, int renderDistance, int lod1Start, int lod2Start) {
         this.world = world;
         this.player = player;
@@ -89,6 +95,7 @@ public class WorldRenderer {
     public void run() {
         init();
         loop();
+        cleanupQueries();
         world.shutdown();
         lodWorkers.shutdown();
         Callbacks.glfwFreeCallbacks(window);
@@ -196,6 +203,30 @@ public class WorldRenderer {
             }
         }
         positions.sort(Comparator.comparingInt(p -> p[3]));
+        // Depth prepass: render chunk bounding boxes to populate depth buffer
+        glColorMask(false, false, false, false);
+        for (int[] p : positions) {
+            int cx = p[0];
+            int cy = p[1];
+            int cz = p[2];
+            int baseX = cx * Chunk.SIZE;
+            int baseY = cy * Chunk.SIZE;
+            int baseZ = cz * Chunk.SIZE;
+            if (!boxInFrustum(baseX, baseY, baseZ,
+                    baseX + Chunk.SIZE, baseY + Chunk.SIZE, baseZ + Chunk.SIZE)) {
+                continue;
+            }
+            if (world.isChunkOccluded(cx, cy, cz)) {
+                continue;
+            }
+            world.requestChunk(cx, cy, cz, playerChunkX, playerChunkY, playerChunkZ);
+            Chunk chunk = world.getChunkIfLoaded(cx, cy, cz);
+            if (chunk == null || chunk.isOccluded()) {
+                continue;
+            }
+            renderChunkBox(baseX, baseY, baseZ);
+        }
+        glColorMask(true, true, true, true);
 
         for (int[] p : positions) {
             int cx = p[0];
@@ -216,6 +247,25 @@ public class WorldRenderer {
             if (chunk == null || chunk.isOccluded()) {
                 continue;
             }
+
+            ChunkRenderData data = chunkQueries.computeIfAbsent(chunk, c -> new ChunkRenderData());
+            data.poll();
+
+            if (!data.visible) {
+                glBeginQuery(GL_SAMPLES_PASSED, data.queryId);
+                glColorMask(false, false, false, false);
+                renderChunkBox(baseX, baseY, baseZ);
+                glEndQuery(GL_SAMPLES_PASSED);
+                glColorMask(true, true, true, true);
+                data.pending = true;
+                if (showChunkBorders) {
+                    renderChunkDebug(chunk, baseX, baseY, baseZ);
+                }
+                continue;
+            }
+
+            glBeginQuery(GL_SAMPLES_PASSED, data.queryId);
+
             int dist = Math.max(Math.max(Math.abs(cx - playerChunkX), Math.abs(cy - playerChunkY)),
                     Math.abs(cz - playerChunkZ));
             boolean rendered = false;
@@ -237,6 +287,8 @@ public class WorldRenderer {
                     rendered = true;
                 }
             }
+            glEndQuery(GL_SAMPLES_PASSED);
+            data.pending = true;
             if (rendered) {
                 renderedChunkCount++;
             }
@@ -287,6 +339,13 @@ public class WorldRenderer {
         }
     }
 
+    private void cleanupQueries() {
+        for (ChunkRenderData data : chunkQueries.values()) {
+            glDeleteQueries(data.queryId);
+        }
+        chunkQueries.clear();
+    }
+
     private static class LodKey {
         final Chunk chunk;
         final int step;
@@ -318,6 +377,28 @@ public class WorldRenderer {
             this.chunk = chunk;
             this.step = step;
             this.buffer = buffer;
+        }
+    }
+
+    private static class ChunkRenderData {
+        final int queryId;
+        boolean visible = true;
+        boolean pending;
+
+        ChunkRenderData() {
+            queryId = glGenQueries();
+        }
+
+        void poll() {
+            if (!pending) {
+                return;
+            }
+            int available = glGetQueryObjecti(queryId, GL_QUERY_RESULT_AVAILABLE);
+            if (available != 0) {
+                int result = glGetQueryObjecti(queryId, GL_QUERY_RESULT);
+                visible = result != 0;
+                pending = false;
+            }
         }
     }
 
@@ -355,6 +436,29 @@ public class WorldRenderer {
         glEnd();
         glColor3f(1f, 1f, 1f);
         glEnable(GL_DEPTH_TEST);
+    }
+
+    private void renderChunkBox(int baseX, int baseY, int baseZ) {
+        float x1 = baseX;
+        float y1 = baseY;
+        float z1 = baseZ;
+        float x2 = baseX + Chunk.SIZE;
+        float y2 = baseY + Chunk.SIZE;
+        float z2 = baseZ + Chunk.SIZE;
+        glBegin(GL_QUADS);
+        // Front
+        glVertex3f(x1, y1, z1); glVertex3f(x2, y1, z1); glVertex3f(x2, y2, z1); glVertex3f(x1, y2, z1);
+        // Back
+        glVertex3f(x1, y1, z2); glVertex3f(x1, y2, z2); glVertex3f(x2, y2, z2); glVertex3f(x2, y1, z2);
+        // Left
+        glVertex3f(x1, y1, z1); glVertex3f(x1, y2, z1); glVertex3f(x1, y2, z2); glVertex3f(x1, y1, z2);
+        // Right
+        glVertex3f(x2, y1, z1); glVertex3f(x2, y1, z2); glVertex3f(x2, y2, z2); glVertex3f(x2, y2, z1);
+        // Top
+        glVertex3f(x1, y2, z1); glVertex3f(x2, y2, z1); glVertex3f(x2, y2, z2); glVertex3f(x1, y2, z2);
+        // Bottom
+        glVertex3f(x1, y1, z1); glVertex3f(x1, y1, z2); glVertex3f(x2, y1, z2); glVertex3f(x2, y1, z1);
+        glEnd();
     }
 
     /** Extracts the six view frustum planes from the current projection and modelview matrices. */
