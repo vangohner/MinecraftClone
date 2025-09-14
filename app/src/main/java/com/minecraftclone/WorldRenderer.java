@@ -2,6 +2,7 @@ package com.minecraftclone;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL15.*;
 import static org.lwjgl.system.MemoryUtil.NULL;
 
 import java.nio.FloatBuffer;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.Queue;
 import java.util.Set;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
@@ -70,6 +72,8 @@ public class WorldRenderer {
 
     /** View frustum planes computed each frame. Each plane is stored as [A,B,C,D]. */
     private final float[][] frustum = new float[6][4];
+    /** All allocated OpenGL query object ids. */
+    private final Set<Integer> queryIds = new HashSet<>();
 
     public WorldRenderer(World world, Player player, int renderDistance, int lod1Start, int lod2Start) {
         this.world = world;
@@ -89,6 +93,7 @@ public class WorldRenderer {
     public void run() {
         init();
         loop();
+        deleteQueries();
         world.shutdown();
         lodWorkers.shutdown();
         Callbacks.glfwFreeCallbacks(window);
@@ -197,6 +202,7 @@ public class WorldRenderer {
         }
         positions.sort(Comparator.comparingInt(p -> p[3]));
 
+        List<ChunkInfo> chunks = new ArrayList<>();
         for (int[] p : positions) {
             int cx = p[0];
             int cy = p[1];
@@ -218,18 +224,50 @@ public class WorldRenderer {
             }
             int dist = Math.max(Math.max(Math.abs(cx - playerChunkX), Math.abs(cy - playerChunkY)),
                     Math.abs(cz - playerChunkZ));
+            chunks.add(new ChunkInfo(chunk, baseX, baseY, baseZ, dist));
+        }
+
+        // Depth prepass using bounding boxes
+        glColorMask(false, false, false, false);
+        glDepthMask(true);
+        for (ChunkInfo info : chunks) {
+            drawChunkBounds(info.baseX, info.baseY, info.baseZ);
+        }
+        glColorMask(true, true, true, true);
+
+        for (ChunkInfo info : chunks) {
+            Chunk chunk = info.chunk;
+            int queryId = getQueryId(chunk);
+            int available = glGetQueryObjecti(queryId, GL_QUERY_RESULT_AVAILABLE);
+            if (available != 0) {
+                int samples = glGetQueryObjecti(queryId, GL_QUERY_RESULT);
+                chunk.setVisible(samples > 0);
+            }
+            if (!chunk.wasVisible()) {
+                glColorMask(false, false, false, false);
+                glDepthMask(false);
+                glBeginQuery(GL_SAMPLES_PASSED, queryId);
+                drawChunkBounds(info.baseX, info.baseY, info.baseZ);
+                glEndQuery(GL_SAMPLES_PASSED);
+                glDepthMask(true);
+                glColorMask(true, true, true, true);
+                continue;
+            }
+
+            glBeginQuery(GL_SAMPLES_PASSED, queryId);
             boolean rendered = false;
+            int dist = info.dist;
             if (dist > lod2Start) {
-                rendered = renderLod(chunk, baseX, baseY, baseZ, LOD2_STEP);
+                rendered = renderLod(chunk, info.baseX, info.baseY, info.baseZ, LOD2_STEP);
             } else if (dist > lod1Start) {
-                rendered = renderLod(chunk, baseX, baseY, baseZ, LOD1_STEP);
+                rendered = renderLod(chunk, info.baseX, info.baseY, info.baseZ, LOD1_STEP);
             } else {
                 if (chunk.isDirty() || chunk.getMesh() == null) {
                     ChunkMesh old = chunk.getMesh();
                     if (old != null) {
                         old.dispose();
                     }
-                    chunk.setMesh(ChunkMesh.build(world, chunk, baseX, baseY, baseZ));
+                    chunk.setMesh(ChunkMesh.build(world, chunk, info.baseX, info.baseY, info.baseZ));
                 }
                 ChunkMesh mesh = chunk.getMesh();
                 if (mesh != null) {
@@ -237,11 +275,13 @@ public class WorldRenderer {
                     rendered = true;
                 }
             }
+            glEndQuery(GL_SAMPLES_PASSED);
+
             if (rendered) {
                 renderedChunkCount++;
             }
             if (showChunkBorders) {
-                renderChunkDebug(chunk, baseX, baseY, baseZ);
+                renderChunkDebug(chunk, info.baseX, info.baseY, info.baseZ);
             }
         }
     }
@@ -284,6 +324,60 @@ public class WorldRenderer {
                 ChunkMesh mesh = ChunkMesh.upload(res.buffer);
                 res.chunk.setLodMesh(res.step, mesh);
             }
+        }
+    }
+
+    private int getQueryId(Chunk chunk) {
+        int id = chunk.getQueryId();
+        if (id == -1) {
+            id = glGenQueries();
+            chunk.setQueryId(id);
+            queryIds.add(id);
+        }
+        return id;
+    }
+
+    private void drawChunkBounds(int baseX, int baseY, int baseZ) {
+        float x1 = baseX;
+        float y1 = baseY;
+        float z1 = baseZ;
+        float x2 = baseX + Chunk.SIZE;
+        float y2 = baseY + Chunk.SIZE;
+        float z2 = baseZ + Chunk.SIZE;
+        glBegin(GL_QUADS);
+        // +X face
+        glVertex3f(x2, y1, z1); glVertex3f(x2, y1, z2); glVertex3f(x2, y2, z2); glVertex3f(x2, y2, z1);
+        // -X face
+        glVertex3f(x1, y1, z2); glVertex3f(x1, y1, z1); glVertex3f(x1, y2, z1); glVertex3f(x1, y2, z2);
+        // +Y face
+        glVertex3f(x1, y2, z1); glVertex3f(x2, y2, z1); glVertex3f(x2, y2, z2); glVertex3f(x1, y2, z2);
+        // -Y face
+        glVertex3f(x1, y1, z2); glVertex3f(x2, y1, z2); glVertex3f(x2, y1, z1); glVertex3f(x1, y1, z1);
+        // +Z face
+        glVertex3f(x1, y1, z2); glVertex3f(x2, y1, z2); glVertex3f(x2, y2, z2); glVertex3f(x1, y2, z2);
+        // -Z face
+        glVertex3f(x2, y1, z1); glVertex3f(x1, y1, z1); glVertex3f(x1, y2, z1); glVertex3f(x2, y2, z1);
+        glEnd();
+    }
+
+    private void deleteQueries() {
+        for (int id : queryIds) {
+            glDeleteQueries(id);
+        }
+        queryIds.clear();
+    }
+
+    private static class ChunkInfo {
+        final Chunk chunk;
+        final int baseX, baseY, baseZ;
+        final int dist;
+
+        ChunkInfo(Chunk chunk, int baseX, int baseY, int baseZ, int dist) {
+            this.chunk = chunk;
+            this.baseX = baseX;
+            this.baseY = baseY;
+            this.baseZ = baseZ;
+            this.dist = dist;
         }
     }
 
