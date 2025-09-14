@@ -25,6 +25,8 @@ dependencies {
     runtimeOnly("org.lwjgl:lwjgl-glfw::$lwjglNatives")
     runtimeOnly("org.lwjgl:lwjgl-opengl::$lwjglNatives")
 
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.0")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.0")
 }
 
 java {
@@ -35,4 +37,8 @@ java {
 
 application {
     mainClass = "com.minecraftclone.App"
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
