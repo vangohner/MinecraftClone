@@ -423,18 +423,19 @@ public class WorldRenderer {
         float y2 = baseY + Chunk.SIZE;
         float z2 = baseZ + Chunk.SIZE;
         glBegin(GL_QUADS);
-        // +X
+        // Faces wound counter-clockwise so front sides point outward
+        // +X face
         glVertex3f(x2, y1, z1); glVertex3f(x2, y2, z1); glVertex3f(x2, y2, z2); glVertex3f(x2, y1, z2);
-        // -X
+        // -X face
         glVertex3f(x1, y1, z2); glVertex3f(x1, y2, z2); glVertex3f(x1, y2, z1); glVertex3f(x1, y1, z1);
-        // +Y
-        glVertex3f(x1, y2, z1); glVertex3f(x2, y2, z1); glVertex3f(x2, y2, z2); glVertex3f(x1, y2, z2);
-        // -Y
-        glVertex3f(x1, y1, z2); glVertex3f(x2, y1, z2); glVertex3f(x2, y1, z1); glVertex3f(x1, y1, z1);
-        // +Z
-        glVertex3f(x1, y1, z2); glVertex3f(x1, y2, z2); glVertex3f(x2, y2, z2); glVertex3f(x2, y1, z2);
-        // -Z
-        glVertex3f(x2, y1, z1); glVertex3f(x2, y2, z1); glVertex3f(x1, y2, z1); glVertex3f(x1, y1, z1);
+        // +Y face
+        glVertex3f(x1, y2, z1); glVertex3f(x1, y2, z2); glVertex3f(x2, y2, z2); glVertex3f(x2, y2, z1);
+        // -Y face
+        glVertex3f(x1, y1, z1); glVertex3f(x2, y1, z1); glVertex3f(x2, y1, z2); glVertex3f(x1, y1, z2);
+        // +Z face
+        glVertex3f(x1, y1, z2); glVertex3f(x2, y1, z2); glVertex3f(x2, y2, z2); glVertex3f(x1, y2, z2);
+        // -Z face
+        glVertex3f(x1, y1, z1); glVertex3f(x1, y2, z1); glVertex3f(x2, y2, z1); glVertex3f(x2, y1, z1);
         glEnd();
     }
 
