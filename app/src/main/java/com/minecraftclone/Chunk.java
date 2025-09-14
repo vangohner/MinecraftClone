@@ -24,6 +24,12 @@ public class Chunk {
     private final boolean[] solidFaces = new boolean[6];
     /** Whether this chunk is completely hidden by neighbors. */
     private boolean occluded;
+    /** OpenGL occlusion query object for this chunk. */
+    private int queryId = -1;
+    /** Cached visibility result from the last completed occlusion query. */
+    private boolean lastVisible = true;
+    /** Whether a query result is still pending on the GPU. */
+    private boolean queryPending;
 
     public Chunk() {
         // initialize all blocks to AIR
@@ -208,6 +214,30 @@ public class Chunk {
 
     public void setOccluded(boolean occluded) {
         this.occluded = occluded;
+    }
+
+    public int getQueryId() {
+        return queryId;
+    }
+
+    public void setQueryId(int queryId) {
+        this.queryId = queryId;
+    }
+
+    public boolean wasVisible() {
+        return lastVisible;
+    }
+
+    public void setLastVisible(boolean lastVisible) {
+        this.lastVisible = lastVisible;
+    }
+
+    public boolean isQueryPending() {
+        return queryPending;
+    }
+
+    public void setQueryPending(boolean queryPending) {
+        this.queryPending = queryPending;
     }
 
     private void check(int x, int y, int z) {
