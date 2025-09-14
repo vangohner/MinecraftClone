@@ -279,7 +279,9 @@ public class WorldRenderer {
                 glBeginQuery(GL_SAMPLES_PASSED, query);
                 glColorMask(false, false, false, false);
                 glDepthMask(false);
+                glDepthFunc(GL_LEQUAL);
                 renderBoundingBox(baseX, baseY, baseZ);
+                glDepthFunc(GL_LESS);
                 glDepthMask(true);
                 glColorMask(true, true, true, true);
                 glEndQuery(GL_SAMPLES_PASSED);
