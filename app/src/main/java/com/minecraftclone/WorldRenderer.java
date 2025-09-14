@@ -226,6 +226,7 @@ public class WorldRenderer {
         }
         glColorMask(true, true, true, true);
 
+        List<RenderEntry> toRender = new ArrayList<>();
         for (int[] p : positions) {
             int cx = p[0];
             int cy = p[1];
@@ -266,22 +267,28 @@ public class WorldRenderer {
 
             int dist = Math.max(Math.max(Math.abs(cx - playerChunkX), Math.abs(cy - playerChunkY)),
                     Math.abs(cz - playerChunkZ));
-            boolean rendered = false;
+            toRender.add(new RenderEntry(chunk, baseX, baseY, baseZ, dist, query));
+        }
 
-            glBeginQuery(GL_SAMPLES_PASSED, query);
-            if (dist > lod2Start) {
-                rendered = renderLod(chunk, baseX, baseY, baseZ, LOD2_STEP);
-            } else if (dist > lod1Start) {
-                rendered = renderLod(chunk, baseX, baseY, baseZ, LOD1_STEP);
+        // Clear depth from prepass so chunk meshes aren't self-occluded
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        for (RenderEntry entry : toRender) {
+            boolean rendered = false;
+            glBeginQuery(GL_SAMPLES_PASSED, entry.query);
+            if (entry.dist > lod2Start) {
+                rendered = renderLod(entry.chunk, entry.baseX, entry.baseY, entry.baseZ, LOD2_STEP);
+            } else if (entry.dist > lod1Start) {
+                rendered = renderLod(entry.chunk, entry.baseX, entry.baseY, entry.baseZ, LOD1_STEP);
             } else {
-                if (chunk.isDirty() || chunk.getMesh() == null) {
-                    ChunkMesh old = chunk.getMesh();
+                if (entry.chunk.isDirty() || entry.chunk.getMesh() == null) {
+                    ChunkMesh old = entry.chunk.getMesh();
                     if (old != null) {
                         old.dispose();
                     }
-                    chunk.setMesh(ChunkMesh.build(world, chunk, baseX, baseY, baseZ));
+                    entry.chunk.setMesh(ChunkMesh.build(world, entry.chunk, entry.baseX, entry.baseY, entry.baseZ));
                 }
-                ChunkMesh mesh = chunk.getMesh();
+                ChunkMesh mesh = entry.chunk.getMesh();
                 if (mesh != null) {
                     mesh.render();
                     rendered = true;
@@ -293,7 +300,7 @@ public class WorldRenderer {
                 renderedChunkCount++;
             }
             if (showChunkBorders) {
-                renderChunkDebug(chunk, baseX, baseY, baseZ);
+                renderChunkDebug(entry.chunk, entry.baseX, entry.baseY, entry.baseZ);
             }
         }
     }
@@ -370,6 +377,25 @@ public class WorldRenderer {
             this.chunk = chunk;
             this.step = step;
             this.buffer = buffer;
+        }
+    }
+
+    /** Data for chunks that will be rendered in the main pass. */
+    private static class RenderEntry {
+        final Chunk chunk;
+        final int baseX;
+        final int baseY;
+        final int baseZ;
+        final int dist;
+        final int query;
+
+        RenderEntry(Chunk chunk, int baseX, int baseY, int baseZ, int dist, int query) {
+            this.chunk = chunk;
+            this.baseX = baseX;
+            this.baseY = baseY;
+            this.baseZ = baseZ;
+            this.dist = dist;
+            this.query = query;
         }
     }
 
