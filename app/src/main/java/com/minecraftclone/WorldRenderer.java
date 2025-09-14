@@ -229,6 +229,10 @@ public class WorldRenderer {
             int baseZ = cz * Chunk.SIZE;
             if (!boxInFrustum(baseX, baseY, baseZ,
                     baseX + Chunk.SIZE, baseY + Chunk.SIZE, baseZ + Chunk.SIZE)) {
+                Chunk chunk = world.getChunkIfLoaded(cx, cy, cz);
+                if (chunk != null) {
+                    chunkVisibility.remove(chunk);
+                }
                 continue;
             }
             Chunk chunk = world.getChunkIfLoaded(cx, cy, cz);
