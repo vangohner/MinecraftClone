@@ -206,7 +206,7 @@ public class WorldRenderer {
         }
         positions.sort(Comparator.comparingInt(p -> p[3]));
 
-        // Depth prepass rendering bounding boxes
+        // Depth prepass rendering bounding boxes of loaded chunks with meshes
         glColorMask(false, false, false, false);
         for (int[] p : positions) {
             int cx = p[0];
@@ -219,7 +219,8 @@ public class WorldRenderer {
                     baseX + Chunk.SIZE, baseY + Chunk.SIZE, baseZ + Chunk.SIZE)) {
                 continue;
             }
-            if (world.isChunkOccluded(cx, cy, cz)) {
+            Chunk chunk = world.getChunkIfLoaded(cx, cy, cz);
+            if (chunk == null || chunk.isOccluded() || chunk.getMesh() == null) {
                 continue;
             }
             renderBoundingBox(baseX, baseY, baseZ);
