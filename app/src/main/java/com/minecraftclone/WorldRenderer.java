@@ -61,6 +61,10 @@ public class WorldRenderer {
     private boolean showCoordinates;
     /** Tracks whether the F3 key is currently pressed for debug shortcuts. */
     private boolean debugShortcutActive;
+    /** Whether to display occlusion culling debug information. */
+    private boolean debugOcclusion;
+    private final OcclusionDebugStats occlusionStats = new OcclusionDebugStats();
+    private final OcclusionDebugStats lastOcclusionStats = new OcclusionDebugStats();
 
     /** Number of chunks rendered in the most recent frame. */
     private int lastRenderedChunkCount;
@@ -87,6 +91,7 @@ public class WorldRenderer {
         this.lod2Start = lod2Start;
         this.showChunkBorders = world.isDebug();
         this.showCoordinates = world.isDebug();
+        this.debugOcclusion = world.isDebug();
         int threads = Math.max(1, Runtime.getRuntime().availableProcessors() - 1);
         this.lodWorkers = Executors.newFixedThreadPool(threads);
         this.pendingLods = Collections.newSetFromMap(new ConcurrentHashMap<>());
@@ -177,6 +182,10 @@ public class WorldRenderer {
                 if (showCoordinates) {
                     title += String.format(" XYZ: %.2f / %.2f / %.2f", player.getX(), player.getY(), player.getZ());
                 }
+                if (debugOcclusion) {
+                    title += String.format(" Vis:%d Occl:%d Pend:%d", lastOcclusionStats.visible,
+                            lastOcclusionStats.occluded, lastOcclusionStats.pending);
+                }
                 glfwSetWindowTitle(window, title);
                 frames = 0;
                 fpsTimer += 1.0;
@@ -187,6 +196,9 @@ public class WorldRenderer {
     private void renderBlocks() {
         processLodResults();
         renderedChunkCount = 0;
+        if (debugOcclusion) {
+            occlusionStats.reset();
+        }
         int playerChunkX = (int) Math.floor(player.getX() / Chunk.SIZE);
         int playerChunkY = (int) Math.floor(player.getY() / Chunk.SIZE);
         int playerChunkZ = (int) Math.floor(player.getZ() / Chunk.SIZE);
@@ -249,13 +261,17 @@ public class WorldRenderer {
             }
 
             int query = getQuery(chunk);
-            if (glGetQueryObjecti(query, GL_QUERY_RESULT_AVAILABLE) != 0) {
+            boolean available = glGetQueryObjecti(query, GL_QUERY_RESULT_AVAILABLE) != 0;
+            if (available) {
                 int samples = glGetQueryObjecti(query, GL_QUERY_RESULT);
                 chunkVisibility.put(chunk, samples > 0);
             }
             boolean visible = chunkVisibility.getOrDefault(chunk, Boolean.TRUE);
 
             if (!visible) {
+                if (debugOcclusion) {
+                    occlusionStats.recordResult(false);
+                }
                 glBeginQuery(GL_SAMPLES_PASSED, query);
                 glColorMask(false, false, false, false);
                 glDepthMask(false);
@@ -263,12 +279,22 @@ public class WorldRenderer {
                 glDepthMask(true);
                 glColorMask(true, true, true, true);
                 glEndQuery(GL_SAMPLES_PASSED);
+                if (debugOcclusion) {
+                    renderDebugBox(baseX, baseY, baseZ, 1f, 0f, 0f);
+                }
                 continue;
             }
 
+            if (debugOcclusion) {
+                if (available) {
+                    occlusionStats.recordResult(true);
+                } else {
+                    occlusionStats.recordPending();
+                }
+            }
             int dist = Math.max(Math.max(Math.abs(cx - playerChunkX), Math.abs(cy - playerChunkY)),
                     Math.abs(cz - playerChunkZ));
-            toRender.add(new RenderEntry(chunk, baseX, baseY, baseZ, dist, query));
+            toRender.add(new RenderEntry(chunk, baseX, baseY, baseZ, dist, query, !available));
         }
 
         // Clear depth from prepass so chunk meshes aren't self-occluded
@@ -300,9 +326,21 @@ public class WorldRenderer {
             if (rendered) {
                 renderedChunkCount++;
             }
+            if (debugOcclusion) {
+                if (entry.pending) {
+                    renderDebugBox(entry.baseX, entry.baseY, entry.baseZ, 1f, 1f, 0f);
+                } else {
+                    renderDebugBox(entry.baseX, entry.baseY, entry.baseZ, 0f, 1f, 0f);
+                }
+            }
             if (showChunkBorders) {
                 renderChunkDebug(entry.chunk, entry.baseX, entry.baseY, entry.baseZ);
             }
+        }
+        if (debugOcclusion) {
+            lastOcclusionStats.visible = occlusionStats.visible;
+            lastOcclusionStats.occluded = occlusionStats.occluded;
+            lastOcclusionStats.pending = occlusionStats.pending;
         }
     }
 
@@ -389,14 +427,39 @@ public class WorldRenderer {
         final int baseZ;
         final int dist;
         final int query;
+        final boolean pending;
 
-        RenderEntry(Chunk chunk, int baseX, int baseY, int baseZ, int dist, int query) {
+        RenderEntry(Chunk chunk, int baseX, int baseY, int baseZ, int dist, int query, boolean pending) {
             this.chunk = chunk;
             this.baseX = baseX;
             this.baseY = baseY;
             this.baseZ = baseZ;
             this.dist = dist;
             this.query = query;
+            this.pending = pending;
+        }
+    }
+
+    /** Tracks occlusion query results for debugging. */
+    static class OcclusionDebugStats {
+        int visible;
+        int occluded;
+        int pending;
+
+        void reset() {
+            visible = occluded = pending = 0;
+        }
+
+        void recordResult(boolean vis) {
+            if (vis) {
+                visible++;
+            } else {
+                occluded++;
+            }
+        }
+
+        void recordPending() {
+            pending++;
         }
     }
 
@@ -439,22 +502,8 @@ public class WorldRenderer {
         glEnd();
     }
 
-    private void renderChunkDebug(Chunk chunk, int baseX, int baseY, int baseZ) {
-        float r, g, b;
-        if (chunk.getOrigin() == Chunk.Origin.LOADED) {
-            r = 0f; g = 1f; b = 0f; // green for loaded
-        } else {
-            r = 1f; g = 0f; b = 0f; // red for generated
-        }
-        glDisable(GL_DEPTH_TEST);
-        glColor3f(r, g, b);
+    private void drawWireBox(float x1, float y1, float z1, float x2, float y2, float z2) {
         glBegin(GL_LINES);
-        float x1 = baseX;
-        float y1 = baseY;
-        float z1 = baseZ;
-        float x2 = baseX + Chunk.SIZE;
-        float y2 = baseY + Chunk.SIZE;
-        float z2 = baseZ + Chunk.SIZE;
         // bottom square
         glVertex3f(x1, y1, z1); glVertex3f(x2, y1, z1);
         glVertex3f(x2, y1, z1); glVertex3f(x2, y1, z2);
@@ -471,6 +520,26 @@ public class WorldRenderer {
         glVertex3f(x2, y1, z2); glVertex3f(x2, y2, z2);
         glVertex3f(x1, y1, z2); glVertex3f(x1, y2, z2);
         glEnd();
+    }
+
+    private void renderChunkDebug(Chunk chunk, int baseX, int baseY, int baseZ) {
+        float r, g, b;
+        if (chunk.getOrigin() == Chunk.Origin.LOADED) {
+            r = 0f; g = 1f; b = 0f; // green for loaded
+        } else {
+            r = 1f; g = 0f; b = 0f; // red for generated
+        }
+        glDisable(GL_DEPTH_TEST);
+        glColor3f(r, g, b);
+        drawWireBox(baseX, baseY, baseZ, baseX + Chunk.SIZE, baseY + Chunk.SIZE, baseZ + Chunk.SIZE);
+        glColor3f(1f, 1f, 1f);
+        glEnable(GL_DEPTH_TEST);
+    }
+
+    private void renderDebugBox(int baseX, int baseY, int baseZ, float r, float g, float b) {
+        glDisable(GL_DEPTH_TEST);
+        glColor3f(r, g, b);
+        drawWireBox(baseX, baseY, baseZ, baseX + Chunk.SIZE, baseY + Chunk.SIZE, baseZ + Chunk.SIZE);
         glColor3f(1f, 1f, 1f);
         glEnable(GL_DEPTH_TEST);
     }
@@ -606,6 +675,11 @@ public class WorldRenderer {
         if (key == GLFW_KEY_C && debugShortcutActive) {
             showCoordinates = !showCoordinates;
             System.out.println("Coordinates " + (showCoordinates ? "shown" : "hidden"));
+            return;
+        }
+        if (key == GLFW_KEY_O && debugShortcutActive) {
+            debugOcclusion = !debugOcclusion;
+            System.out.println("Occlusion debug " + (debugOcclusion ? "enabled" : "disabled"));
             return;
         }
 
