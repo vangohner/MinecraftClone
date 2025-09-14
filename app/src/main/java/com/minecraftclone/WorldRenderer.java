@@ -2,6 +2,7 @@ package com.minecraftclone;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL15.*;
 import static org.lwjgl.system.MemoryUtil.NULL;
 
 import java.nio.FloatBuffer;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.Queue;
 import java.util.Set;
 import java.util.Collections;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
@@ -67,6 +69,17 @@ public class WorldRenderer {
     private final float[][] frustum = new float[6][4];
     // TODO: Track visible neighbors for occlusion culling.
 
+    private static class QueryState {
+        final int id;
+        boolean visible = true;
+
+        QueryState(int id) {
+            this.id = id;
+        }
+    }
+
+    private final Map<Chunk, QueryState> queryStates = new ConcurrentHashMap<>();
+
     public WorldRenderer(World world, Player player, int renderDistance, int lod1Start, int lod2Start) {
         this.world = world;
         this.player = player;
@@ -87,6 +100,8 @@ public class WorldRenderer {
         loop();
         world.shutdown();
         lodWorkers.shutdown();
+        queryStates.values().forEach(q -> glDeleteQueries(q.id));
+        queryStates.clear();
         Callbacks.glfwFreeCallbacks(window);
         glfwDestroyWindow(window);
         glfwTerminate();
@@ -191,6 +206,22 @@ public class WorldRenderer {
         }
         positions.sort(Comparator.comparingInt(p -> p[3]));
 
+        glColorMask(false, false, false, false);
+        for (int[] p : positions) {
+            int cx = p[0];
+            int cy = p[1];
+            int cz = p[2];
+            int baseX = cx * Chunk.SIZE;
+            int baseY = cy * Chunk.SIZE;
+            int baseZ = cz * Chunk.SIZE;
+            if (!boxInFrustum(baseX, baseY, baseZ,
+                    baseX + Chunk.SIZE, baseY + Chunk.SIZE, baseZ + Chunk.SIZE)) {
+                continue;
+            }
+            renderBoundingBox(baseX, baseY, baseZ);
+        }
+        glColorMask(true, true, true, true);
+
         for (int[] p : positions) {
             int cx = p[0];
             int cy = p[1];
@@ -209,10 +240,11 @@ public class WorldRenderer {
             }
             int dist = Math.max(Math.max(Math.abs(cx - playerChunkX), Math.abs(cy - playerChunkY)),
                     Math.abs(cz - playerChunkZ));
+            boolean visible;
             if (dist > lod2Start) {
-                renderLod(chunk, baseX, baseY, baseZ, LOD2_STEP);
+                visible = renderLod(chunk, baseX, baseY, baseZ, LOD2_STEP);
             } else if (dist > lod1Start) {
-                renderLod(chunk, baseX, baseY, baseZ, LOD1_STEP);
+                visible = renderLod(chunk, baseX, baseY, baseZ, LOD1_STEP);
             } else {
                 if (chunk.isDirty() || chunk.getMesh() == null) {
                     ChunkMesh old = chunk.getMesh();
@@ -222,25 +254,41 @@ public class WorldRenderer {
                     chunk.setMesh(ChunkMesh.build(world, chunk, baseX, baseY, baseZ));
                 }
                 ChunkMesh mesh = chunk.getMesh();
-                if (mesh != null) {
-                    mesh.render();
-                }
+                visible = renderChunkMesh(chunk, mesh, baseX, baseY, baseZ);
             }
-            if (showChunkBorders) {
+            if (showChunkBorders && visible) {
                 renderChunkDebug(chunk, baseX, baseY, baseZ);
             }
         }
     }
 
-    private void renderLod(Chunk chunk, int baseX, int baseY, int baseZ, int step) {
+    private boolean renderChunkMesh(Chunk chunk, ChunkMesh mesh, int baseX, int baseY, int baseZ) {
+        QueryState qs = queryStates.computeIfAbsent(chunk, c -> new QueryState(glGenQueries()));
+        int available = glGetQueryObjecti(qs.id, GL_QUERY_RESULT_AVAILABLE);
+        if (available != 0) {
+            int samples = glGetQueryObjecti(qs.id, GL_QUERY_RESULT);
+            qs.visible = samples > 0;
+        }
+        glBeginQuery(GL_SAMPLES_PASSED, qs.id);
+        if (qs.visible && mesh != null) {
+            mesh.render();
+        } else {
+            glColorMask(false, false, false, false);
+            renderBoundingBox(baseX, baseY, baseZ);
+            glColorMask(true, true, true, true);
+        }
+        glEndQuery(GL_SAMPLES_PASSED);
+        return qs.visible;
+    }
+
+    private boolean renderLod(Chunk chunk, int baseX, int baseY, int baseZ, int step) {
         if (chunk.isLodStepEmpty(step)) {
-            return;
+            return renderChunkMesh(chunk, null, baseX, baseY, baseZ);
         }
         ChunkMesh mesh = chunk.getLodMesh(step);
         boolean dirty = chunk.isLodStepDirty(step);
         if (mesh != null && !dirty) {
-            mesh.render();
-            return;
+            return renderChunkMesh(chunk, mesh, baseX, baseY, baseZ);
         }
         LodKey key = new LodKey(chunk, step);
         if (pendingLods.add(key)) {
@@ -254,9 +302,7 @@ public class WorldRenderer {
                 pendingLods.remove(key);
             });
         }
-        if (mesh != null) {
-            mesh.render();
-        }
+        return renderChunkMesh(chunk, mesh, baseX, baseY, baseZ);
     }
 
     private void processLodResults() {
@@ -303,6 +349,29 @@ public class WorldRenderer {
             this.step = step;
             this.buffer = buffer;
         }
+    }
+
+    private void renderBoundingBox(int baseX, int baseY, int baseZ) {
+        float x1 = baseX;
+        float y1 = baseY;
+        float z1 = baseZ;
+        float x2 = baseX + Chunk.SIZE;
+        float y2 = baseY + Chunk.SIZE;
+        float z2 = baseZ + Chunk.SIZE;
+        glBegin(GL_QUADS);
+        // -Z face
+        glVertex3f(x1, y1, z1); glVertex3f(x2, y1, z1); glVertex3f(x2, y2, z1); glVertex3f(x1, y2, z1);
+        // +Z face
+        glVertex3f(x1, y1, z2); glVertex3f(x2, y1, z2); glVertex3f(x2, y2, z2); glVertex3f(x1, y2, z2);
+        // -X face
+        glVertex3f(x1, y1, z1); glVertex3f(x1, y1, z2); glVertex3f(x1, y2, z2); glVertex3f(x1, y2, z1);
+        // +X face
+        glVertex3f(x2, y1, z1); glVertex3f(x2, y1, z2); glVertex3f(x2, y2, z2); glVertex3f(x2, y2, z1);
+        // -Y face
+        glVertex3f(x1, y1, z1); glVertex3f(x2, y1, z1); glVertex3f(x2, y1, z2); glVertex3f(x1, y1, z2);
+        // +Y face
+        glVertex3f(x1, y2, z1); glVertex3f(x2, y2, z1); glVertex3f(x2, y2, z2); glVertex3f(x1, y2, z2);
+        glEnd();
     }
 
     private void renderChunkDebug(Chunk chunk, int baseX, int baseY, int baseZ) {
