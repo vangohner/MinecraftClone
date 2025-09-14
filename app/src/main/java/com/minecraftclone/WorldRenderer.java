@@ -2,6 +2,7 @@ package com.minecraftclone;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL15.*;
 import static org.lwjgl.system.MemoryUtil.NULL;
 
 import java.nio.FloatBuffer;
@@ -11,6 +12,8 @@ import java.util.List;
 import java.util.Queue;
 import java.util.Set;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
@@ -71,6 +74,11 @@ public class WorldRenderer {
     /** View frustum planes computed each frame. Each plane is stored as [A,B,C,D]. */
     private final float[][] frustum = new float[6][4];
 
+    /** Occlusion query objects for chunks. */
+    private final Map<Chunk, Integer> chunkQueries = new HashMap<>();
+    /** Cached visibility results from the last available query. */
+    private final Map<Chunk, Boolean> chunkVisibility = new HashMap<>();
+
     public WorldRenderer(World world, Player player, int renderDistance, int lod1Start, int lod2Start) {
         this.world = world;
         this.player = player;
@@ -89,6 +97,7 @@ public class WorldRenderer {
     public void run() {
         init();
         loop();
+        deleteQueries();
         world.shutdown();
         lodWorkers.shutdown();
         Callbacks.glfwFreeCallbacks(window);
@@ -197,6 +206,26 @@ public class WorldRenderer {
         }
         positions.sort(Comparator.comparingInt(p -> p[3]));
 
+        // Depth prepass rendering bounding boxes
+        glColorMask(false, false, false, false);
+        for (int[] p : positions) {
+            int cx = p[0];
+            int cy = p[1];
+            int cz = p[2];
+            int baseX = cx * Chunk.SIZE;
+            int baseY = cy * Chunk.SIZE;
+            int baseZ = cz * Chunk.SIZE;
+            if (!boxInFrustum(baseX, baseY, baseZ,
+                    baseX + Chunk.SIZE, baseY + Chunk.SIZE, baseZ + Chunk.SIZE)) {
+                continue;
+            }
+            if (world.isChunkOccluded(cx, cy, cz)) {
+                continue;
+            }
+            renderBoundingBox(baseX, baseY, baseZ);
+        }
+        glColorMask(true, true, true, true);
+
         for (int[] p : positions) {
             int cx = p[0];
             int cy = p[1];
@@ -216,9 +245,30 @@ public class WorldRenderer {
             if (chunk == null || chunk.isOccluded()) {
                 continue;
             }
+
+            int query = getQuery(chunk);
+            if (glGetQueryObjecti(query, GL_QUERY_RESULT_AVAILABLE) != 0) {
+                int samples = glGetQueryObjecti(query, GL_QUERY_RESULT);
+                chunkVisibility.put(chunk, samples > 0);
+            }
+            boolean visible = chunkVisibility.getOrDefault(chunk, Boolean.TRUE);
+
+            if (!visible) {
+                glBeginQuery(GL_SAMPLES_PASSED, query);
+                glColorMask(false, false, false, false);
+                glDepthMask(false);
+                renderBoundingBox(baseX, baseY, baseZ);
+                glDepthMask(true);
+                glColorMask(true, true, true, true);
+                glEndQuery(GL_SAMPLES_PASSED);
+                continue;
+            }
+
             int dist = Math.max(Math.max(Math.abs(cx - playerChunkX), Math.abs(cy - playerChunkY)),
                     Math.abs(cz - playerChunkZ));
             boolean rendered = false;
+
+            glBeginQuery(GL_SAMPLES_PASSED, query);
             if (dist > lod2Start) {
                 rendered = renderLod(chunk, baseX, baseY, baseZ, LOD2_STEP);
             } else if (dist > lod1Start) {
@@ -237,6 +287,8 @@ public class WorldRenderer {
                     rendered = true;
                 }
             }
+            glEndQuery(GL_SAMPLES_PASSED);
+
             if (rendered) {
                 renderedChunkCount++;
             }
@@ -319,6 +371,44 @@ public class WorldRenderer {
             this.step = step;
             this.buffer = buffer;
         }
+    }
+
+    /** Returns the occlusion query object for the given chunk, creating it if necessary. */
+    private int getQuery(Chunk chunk) {
+        return chunkQueries.computeIfAbsent(chunk, c -> glGenQueries());
+    }
+
+    /** Deletes all allocated occlusion query objects. */
+    private void deleteQueries() {
+        for (int q : chunkQueries.values()) {
+            glDeleteQueries(q);
+        }
+        chunkQueries.clear();
+        chunkVisibility.clear();
+    }
+
+    /** Renders a solid axis-aligned bounding box for the chunk. */
+    private void renderBoundingBox(int baseX, int baseY, int baseZ) {
+        float x1 = baseX;
+        float y1 = baseY;
+        float z1 = baseZ;
+        float x2 = baseX + Chunk.SIZE;
+        float y2 = baseY + Chunk.SIZE;
+        float z2 = baseZ + Chunk.SIZE;
+        glBegin(GL_QUADS);
+        // +X
+        glVertex3f(x2, y1, z1); glVertex3f(x2, y2, z1); glVertex3f(x2, y2, z2); glVertex3f(x2, y1, z2);
+        // -X
+        glVertex3f(x1, y1, z2); glVertex3f(x1, y2, z2); glVertex3f(x1, y2, z1); glVertex3f(x1, y1, z1);
+        // +Y
+        glVertex3f(x1, y2, z1); glVertex3f(x2, y2, z1); glVertex3f(x2, y2, z2); glVertex3f(x1, y2, z2);
+        // -Y
+        glVertex3f(x1, y1, z2); glVertex3f(x2, y1, z2); glVertex3f(x2, y1, z1); glVertex3f(x1, y1, z1);
+        // +Z
+        glVertex3f(x1, y1, z2); glVertex3f(x1, y2, z2); glVertex3f(x2, y2, z2); glVertex3f(x2, y1, z2);
+        // -Z
+        glVertex3f(x2, y1, z1); glVertex3f(x2, y2, z1); glVertex3f(x1, y2, z1); glVertex3f(x1, y1, z1);
+        glEnd();
     }
 
     private void renderChunkDebug(Chunk chunk, int baseX, int baseY, int baseZ) {
