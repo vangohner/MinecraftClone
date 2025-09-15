@@ -37,8 +37,9 @@ public class WorldRenderer {
     private int windowedY;
     private int windowedWidth = DEFAULT_WIDTH;
     private int windowedHeight = DEFAULT_HEIGHT;
-    /** Movement speed in world units per second. */
+    /** Movement acceleration in world units per second squared. */
     private static final double MOVE_SPEED = 6.0;
+    private static final double SPRINT_MULTIPLIER = 1.5;
     private static final double MOUSE_SENSITIVITY = 0.002;
     private static final int LOD1_STEP = 2;
     private static final int LOD2_STEP = 4;
@@ -148,11 +149,12 @@ public class WorldRenderer {
 
             // Handle continuous movement input each frame.
             handleMovement(deltaTime);
+            player.update(world, deltaTime);
 
             glLoadIdentity();
             glRotatef((float) Math.toDegrees(-player.getPitch()), 1f, 0f, 0f);
             glRotatef((float) Math.toDegrees(-player.getYaw()), 0f, 1f, 0f);
-            glTranslatef((float) -player.getX(), (float) -player.getY(), (float) -player.getZ());
+            glTranslatef((float) -player.getX(), (float) -player.getEyeY(), (float) -player.getZ());
 
             updateFrustum();
             renderBlocks();
@@ -166,7 +168,7 @@ public class WorldRenderer {
             if (now - fpsTimer >= 1.0) {
                 String title = "Minecraft Clone - FPS: " + frames + " Chunks: " + lastRenderedChunkCount;
                 if (showCoordinates) {
-                    title += String.format(" XYZ: %.2f / %.2f / %.2f", player.getX(), player.getY(), player.getZ());
+                    title += String.format(" XYZ: %.2f / %.2f / %.2f", player.getX(), player.getEyeY(), player.getZ());
                 }
                 glfwSetWindowTitle(window, title);
                 frames = 0;
@@ -179,7 +181,7 @@ public class WorldRenderer {
         processLodResults();
         renderedChunkCount = 0;
         int playerChunkX = (int) Math.floor(player.getX() / Chunk.SIZE);
-        int playerChunkY = (int) Math.floor(player.getY() / Chunk.SIZE);
+        int playerChunkY = (int) Math.floor(player.getEyeY() / Chunk.SIZE);
         int playerChunkZ = (int) Math.floor(player.getZ() / Chunk.SIZE);
         int radius = renderDistance;
 
@@ -480,6 +482,11 @@ public class WorldRenderer {
             return;
         }
 
+        if (key == GLFW_KEY_F && action == GLFW_PRESS) {
+            player.toggleFlying();
+            return;
+        }
+
         if (key == GLFW_KEY_G && debugShortcutActive) {
             showChunkBorders = !showChunkBorders;
             System.out.println("Chunk borders " + (showChunkBorders ? "enabled" : "disabled"));
@@ -506,7 +513,6 @@ public class WorldRenderer {
     private void handleMovement(double deltaTime) {
         double forward = 0;
         double right = 0;
-        double up = 0;
 
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
             forward += 1;
@@ -520,31 +526,35 @@ public class WorldRenderer {
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
             right -= 1;
         }
-        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-            up += 1;
-        }
-        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
-            up -= 1;
-        }
+
+        boolean sprint = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS;
+        double speed = MOVE_SPEED * (sprint ? SPRINT_MULTIPLIER : 1.0);
 
         if (forward != 0 || right != 0) {
-            moveRelative(right, forward, deltaTime);
+            double yaw = player.getYaw();
+            double ax = (-forward * Math.sin(yaw) + right * Math.cos(yaw)) * speed;
+            double az = (-forward * Math.cos(yaw) - right * Math.sin(yaw)) * speed;
+            player.accelerate(ax, az, deltaTime, speed);
         }
-        if (up != 0) {
-            moveVertical(up, deltaTime);
+
+        if (player.isFlying()) {
+            double up = 0;
+            if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+                up += 1;
+            }
+            if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+                up -= 1;
+            }
+            if (up != 0) {
+                player.setVerticalVelocity(up * speed);
+            } else {
+                player.setVerticalVelocity(0);
+            }
+        } else {
+            if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+                player.jump();
+            }
         }
-    }
-
-    private void moveRelative(double right, double forward, double deltaTime) {
-        double yaw = player.getYaw();
-        double speed = MOVE_SPEED * deltaTime;
-        double dx = (-forward * Math.sin(yaw) + right * Math.cos(yaw)) * speed;
-        double dz = (-forward * Math.cos(yaw) - right * Math.sin(yaw)) * speed;
-        player.move(dx, 0, dz);
-    }
-
-    private void moveVertical(double up, double deltaTime) {
-        player.move(0, up * MOVE_SPEED * deltaTime, 0);
     }
 
     private void toggleFullscreen() {
