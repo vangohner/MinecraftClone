@@ -107,6 +107,14 @@ public class World {
     }
 
     /**
+     * Exposes the terrain generator so that systems like mesh builders can
+     * sample the underlying density field directly.
+     */
+    public ChunkGenerator getGenerator() {
+        return generator;
+    }
+
+    /**
      * Retrieves a chunk if it has already been generated, or {@code null}
      * otherwise.
      */

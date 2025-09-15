@@ -65,22 +65,7 @@ public class ChunkMesh {
     }
 
     private static FloatBuffer buildBuffer(World world, Chunk chunk, int baseX, int baseY, int baseZ) {
-        List<Float> data = new ArrayList<>();
-
-        // Greedy mesh each pair of parallel faces
-        meshXY(data, world, chunk, baseX, baseY, baseZ, true);   // +Z
-        meshXY(data, world, chunk, baseX, baseY, baseZ, false);  // -Z
-        meshYZ(data, world, chunk, baseX, baseY, baseZ, true);   // +X
-        meshYZ(data, world, chunk, baseX, baseY, baseZ, false);  // -X
-        meshXZ(data, world, chunk, baseX, baseY, baseZ, true);   // +Y
-        meshXZ(data, world, chunk, baseX, baseY, baseZ, false);  // -Y
-
-        FloatBuffer buf = BufferUtils.createFloatBuffer(data.size());
-        for (Float f : data) {
-            buf.put(f);
-        }
-        buf.flip();
-        return buf;
+        return MarchingCubes.buildChunk(world.getGenerator(), baseX, baseY, baseZ, Chunk.SIZE);
     }
 
     static FloatBuffer buildLodBuffer(World world, Chunk chunk, int baseX, int baseY, int baseZ, int step) {
