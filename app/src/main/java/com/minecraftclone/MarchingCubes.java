@@ -21,14 +21,26 @@ public class MarchingCubes {
             {0, 0, 1}, {1, 0, 1}, {1, 1, 1}, {0, 1, 1}
     };
 
-    /** Indices of the six tetrahedra composing a cube. */
-    private static final int[][] TETRAHEDRA = {
+    /**
+     * Indices of the six tetrahedra composing a cube. Two layouts are used and
+     * alternated for neighbouring cubes to avoid cracks along chunk boundaries.
+     */
+    private static final int[][] TETRAHEDRA_A = {
             {0, 5, 1, 6},
             {0, 1, 2, 6},
             {0, 2, 3, 6},
             {0, 3, 7, 6},
             {0, 7, 4, 6},
             {0, 4, 5, 6}
+    };
+
+    private static final int[][] TETRAHEDRA_B = {
+            {1, 6, 2, 7},
+            {1, 2, 3, 7},
+            {1, 3, 0, 7},
+            {1, 0, 4, 7},
+            {1, 4, 5, 7},
+            {1, 5, 6, 7}
     };
 
     /** Edge pairs within a tetrahedron. */
@@ -70,19 +82,27 @@ public class MarchingCubes {
                         cubePos[i][2] = baseZ + z + CUBE_CORNERS[i][2];
                     }
 
-                    for (int[] tet : TETRAHEDRA) {
+                    int[][] tets = (((x ^ y ^ z) & 1) == 0) ? TETRAHEDRA_A : TETRAHEDRA_B;
+                    for (int[] tet : tets) {
                         double[] d = {cube[tet[0]], cube[tet[1]], cube[tet[2]], cube[tet[3]]};
                         float[][] p = {cubePos[tet[0]], cubePos[tet[1]], cubePos[tet[2]], cubePos[tet[3]]};
 
+                        float[] insidePoint = new float[3];
                         int inside = 0;
-                        for (double v : d) {
-                            if (v > 0) {
+                        for (int i = 0; i < 4; i++) {
+                            if (d[i] > 0) {
+                                insidePoint[0] += p[i][0];
+                                insidePoint[1] += p[i][1];
+                                insidePoint[2] += p[i][2];
                                 inside++;
                             }
                         }
                         if (inside == 0 || inside == 4) {
                             continue;
                         }
+                        insidePoint[0] /= inside;
+                        insidePoint[1] /= inside;
+                        insidePoint[2] /= inside;
 
                         List<float[]> verts = new ArrayList<>();
                         for (int[] e : TET_EDGES) {
@@ -105,9 +125,9 @@ public class MarchingCubes {
                             continue;
                         }
 
-                        addTriangle(data, verts.get(0), verts.get(1), verts.get(2), generator);
+                        addOrientedTriangle(data, verts.get(0), verts.get(1), verts.get(2), insidePoint, generator);
                         if (verts.size() == 4) {
-                            addTriangle(data, verts.get(0), verts.get(2), verts.get(3), generator);
+                            addOrientedTriangle(data, verts.get(0), verts.get(2), verts.get(3), insidePoint, generator);
                         }
                     }
                 }
@@ -120,6 +140,25 @@ public class MarchingCubes {
         }
         buf.flip();
         return buf;
+    }
+
+    private static void addOrientedTriangle(List<Float> data, float[] a, float[] b, float[] c, float[] inside, ChunkGenerator gen) {
+        float cx = (a[0] + b[0] + c[0]) / 3f;
+        float cy = (a[1] + b[1] + c[1]) / 3f;
+        float cz = (a[2] + b[2] + c[2]) / 3f;
+        float nx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]);
+        float ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+        float nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+        float tx = inside[0] - cx;
+        float ty = inside[1] - cy;
+        float tz = inside[2] - cz;
+        float dot = nx * tx + ny * ty + nz * tz;
+        if (dot > 0) {
+            float[] tmp = b;
+            b = c;
+            c = tmp;
+        }
+        addTriangle(data, a, b, c, gen);
     }
 
     private static void addTriangle(List<Float> data, float[] a, float[] b, float[] c, ChunkGenerator gen) {
