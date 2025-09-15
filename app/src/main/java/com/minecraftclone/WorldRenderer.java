@@ -37,7 +37,7 @@ public class WorldRenderer {
     private int windowedY;
     private int windowedWidth = DEFAULT_WIDTH;
     private int windowedHeight = DEFAULT_HEIGHT;
-    /** Movement speed in world units per second. */
+    /** Movement acceleration in world units per second squared. */
     private static final double MOVE_SPEED = 6.0;
     private static final double MOUSE_SENSITIVITY = 0.002;
     private static final int LOD1_STEP = 2;
@@ -148,6 +148,7 @@ public class WorldRenderer {
 
             // Handle continuous movement input each frame.
             handleMovement(deltaTime);
+            player.update(world, deltaTime);
 
             glLoadIdentity();
             glRotatef((float) Math.toDegrees(-player.getPitch()), 1f, 0f, 0f);
@@ -506,7 +507,6 @@ public class WorldRenderer {
     private void handleMovement(double deltaTime) {
         double forward = 0;
         double right = 0;
-        double up = 0;
 
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
             forward += 1;
@@ -520,31 +520,16 @@ public class WorldRenderer {
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
             right -= 1;
         }
-        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-            up += 1;
-        }
-        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
-            up -= 1;
-        }
 
         if (forward != 0 || right != 0) {
-            moveRelative(right, forward, deltaTime);
+            double yaw = player.getYaw();
+            double ax = (-forward * Math.sin(yaw) + right * Math.cos(yaw)) * MOVE_SPEED;
+            double az = (-forward * Math.cos(yaw) - right * Math.sin(yaw)) * MOVE_SPEED;
+            player.accelerate(ax, az, deltaTime);
         }
-        if (up != 0) {
-            moveVertical(up, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+            player.jump();
         }
-    }
-
-    private void moveRelative(double right, double forward, double deltaTime) {
-        double yaw = player.getYaw();
-        double speed = MOVE_SPEED * deltaTime;
-        double dx = (-forward * Math.sin(yaw) + right * Math.cos(yaw)) * speed;
-        double dz = (-forward * Math.cos(yaw) - right * Math.sin(yaw)) * speed;
-        player.move(dx, 0, dz);
-    }
-
-    private void moveVertical(double up, double deltaTime) {
-        player.move(0, up * MOVE_SPEED * deltaTime, 0);
     }
 
     private void toggleFullscreen() {
