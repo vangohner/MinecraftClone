@@ -33,7 +33,7 @@ public class Player {
     /** Width of the player collision box. */
     private static final double WIDTH = 0.6;
     /** Height of the player collision box. */
-    private static final double HEIGHT = 1.8;
+    private static final double HEIGHT = 2.0;
     private static final double HALF_WIDTH = WIDTH / 2.0;
 
     public Player(double x, double y, double z) {
