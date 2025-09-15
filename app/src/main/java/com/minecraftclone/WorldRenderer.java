@@ -39,6 +39,7 @@ public class WorldRenderer {
     private int windowedHeight = DEFAULT_HEIGHT;
     /** Movement acceleration in world units per second squared. */
     private static final double MOVE_SPEED = 6.0;
+    private static final double SPRINT_MULTIPLIER = 1.5;
     private static final double MOUSE_SENSITIVITY = 0.002;
     private static final int LOD1_STEP = 2;
     private static final int LOD2_STEP = 4;
@@ -481,6 +482,11 @@ public class WorldRenderer {
             return;
         }
 
+        if (key == GLFW_KEY_F && action == GLFW_PRESS) {
+            player.toggleFlying();
+            return;
+        }
+
         if (key == GLFW_KEY_G && debugShortcutActive) {
             showChunkBorders = !showChunkBorders;
             System.out.println("Chunk borders " + (showChunkBorders ? "enabled" : "disabled"));
@@ -521,14 +527,33 @@ public class WorldRenderer {
             right -= 1;
         }
 
+        boolean sprint = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS;
+        double speed = MOVE_SPEED * (sprint ? SPRINT_MULTIPLIER : 1.0);
+
         if (forward != 0 || right != 0) {
             double yaw = player.getYaw();
-            double ax = (-forward * Math.sin(yaw) + right * Math.cos(yaw)) * MOVE_SPEED;
-            double az = (-forward * Math.cos(yaw) - right * Math.sin(yaw)) * MOVE_SPEED;
-            player.accelerate(ax, az, deltaTime);
+            double ax = (-forward * Math.sin(yaw) + right * Math.cos(yaw)) * speed;
+            double az = (-forward * Math.cos(yaw) - right * Math.sin(yaw)) * speed;
+            player.accelerate(ax, az, deltaTime, speed);
         }
-        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-            player.jump();
+
+        if (player.isFlying()) {
+            double up = 0;
+            if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+                up += 1;
+            }
+            if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+                up -= 1;
+            }
+            if (up != 0) {
+                player.setVerticalVelocity(up * speed);
+            } else {
+                player.setVerticalVelocity(0);
+            }
+        } else {
+            if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+                player.jump();
+            }
         }
     }
 

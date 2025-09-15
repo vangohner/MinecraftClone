@@ -25,8 +25,9 @@ public class Player {
 
     /** Whether the player is currently on the ground. */
     private boolean onGround;
+    /** Whether the player is currently in flying mode. */
+    private boolean flying;
 
-    private static final double MAX_SPEED = 6.0;
     private static final double FRICTION = 6.0;
     private static final double GRAVITY = 20.0;
     private static final double JUMP_VELOCITY = 8.0;
@@ -48,6 +49,7 @@ public class Player {
         this.vy = 0;
         this.vz = 0;
         this.onGround = false;
+        this.flying = false;
     }
 
     public void move(double dx, double dy, double dz) {
@@ -91,16 +93,33 @@ public class Player {
     }
 
     /**
-     * Applies horizontal acceleration relative to the player's current yaw.
+     * Applies horizontal acceleration relative to the player's current yaw and
+     * clamps speed to the provided maximum.
      */
-    public void accelerate(double ax, double az, double dt) {
+    public void accelerate(double ax, double az, double dt, double maxSpeed) {
         vx += ax * dt;
         vz += az * dt;
         double speed = Math.sqrt(vx * vx + vz * vz);
-        if (speed > MAX_SPEED) {
-            double scale = MAX_SPEED / speed;
+        if (speed > maxSpeed) {
+            double scale = maxSpeed / speed;
             vx *= scale;
             vz *= scale;
+        }
+    }
+
+    /** Sets the vertical velocity directly, used for flying. */
+    public void setVerticalVelocity(double v) {
+        vy = v;
+    }
+
+    public boolean isFlying() {
+        return flying;
+    }
+
+    public void toggleFlying() {
+        flying = !flying;
+        if (flying) {
+            vy = 0;
         }
     }
 
@@ -119,7 +138,11 @@ public class Player {
      * world blocks.
      */
     public void update(World world, double dt) {
-        vy -= GRAVITY * dt;
+        if (!flying) {
+            vy -= GRAVITY * dt;
+        } else {
+            onGround = false;
+        }
 
         double dxOrig = vx * dt;
         double dyOrig = vy * dt;
