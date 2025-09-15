@@ -6,3 +6,7 @@ build
 
 # Ignore generated world data
 world/
+
+# Ignore C++ build artifacts
+cpp/*.o
+cpp/test_blocktype
