@@ -153,7 +153,7 @@ public class WorldRenderer {
             glLoadIdentity();
             glRotatef((float) Math.toDegrees(-player.getPitch()), 1f, 0f, 0f);
             glRotatef((float) Math.toDegrees(-player.getYaw()), 0f, 1f, 0f);
-            glTranslatef((float) -player.getX(), (float) -player.getY(), (float) -player.getZ());
+            glTranslatef((float) -player.getX(), (float) -player.getEyeY(), (float) -player.getZ());
 
             updateFrustum();
             renderBlocks();
@@ -167,7 +167,7 @@ public class WorldRenderer {
             if (now - fpsTimer >= 1.0) {
                 String title = "Minecraft Clone - FPS: " + frames + " Chunks: " + lastRenderedChunkCount;
                 if (showCoordinates) {
-                    title += String.format(" XYZ: %.2f / %.2f / %.2f", player.getX(), player.getY(), player.getZ());
+                    title += String.format(" XYZ: %.2f / %.2f / %.2f", player.getX(), player.getEyeY(), player.getZ());
                 }
                 glfwSetWindowTitle(window, title);
                 frames = 0;
@@ -180,7 +180,7 @@ public class WorldRenderer {
         processLodResults();
         renderedChunkCount = 0;
         int playerChunkX = (int) Math.floor(player.getX() / Chunk.SIZE);
-        int playerChunkY = (int) Math.floor(player.getY() / Chunk.SIZE);
+        int playerChunkY = (int) Math.floor(player.getEyeY() / Chunk.SIZE);
         int playerChunkZ = (int) Math.floor(player.getZ() / Chunk.SIZE);
         int radius = renderDistance;
 

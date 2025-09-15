@@ -35,6 +35,8 @@ public class Player {
     /** Height of the player collision box. */
     private static final double HEIGHT = 2.0;
     private static final double HALF_WIDTH = WIDTH / 2.0;
+    /** Height of the player's eyes above their feet. */
+    private static final double EYE_HEIGHT = 1.7;
 
     public Player(double x, double y, double z) {
         this.x = x;
@@ -64,6 +66,11 @@ public class Player {
 
     public double getZ() {
         return z;
+    }
+
+    /** Returns the world-space height of the player's eyes. */
+    public double getEyeY() {
+        return y + EYE_HEIGHT;
     }
 
     public double getYaw() {
