@@ -30,6 +30,11 @@ public class Player {
     private static final double FRICTION = 6.0;
     private static final double GRAVITY = 20.0;
     private static final double JUMP_VELOCITY = 8.0;
+    /** Width of the player collision box. */
+    private static final double WIDTH = 0.6;
+    /** Height of the player collision box. */
+    private static final double HEIGHT = 1.8;
+    private static final double HALF_WIDTH = WIDTH / 2.0;
 
     public Player(double x, double y, double z) {
         this.x = x;
@@ -103,32 +108,168 @@ public class Player {
     }
 
     /**
-     * Updates the player's position applying velocity, gravity and ground
-     * collision against the world blocks.
+     * Updates the player's position applying velocity, gravity and collision with
+     * world blocks.
      */
     public void update(World world, double dt) {
         vy -= GRAVITY * dt;
-        x += vx * dt;
-        y += vy * dt;
-        z += vz * dt;
+
+        double dxOrig = vx * dt;
+        double dyOrig = vy * dt;
+        double dzOrig = vz * dt;
+
+        double dx = moveX(world, dxOrig);
+        double dy = moveY(world, dyOrig);
+        double dz = moveZ(world, dzOrig);
+
+        if (dx != dxOrig) {
+            vx = 0;
+        }
+        if (dy != dyOrig) {
+            vy = 0;
+        }
+        if (dz != dzOrig) {
+            vz = 0;
+        }
 
         if (onGround) {
             vx -= vx * Math.min(1.0, FRICTION * dt);
             vz -= vz * Math.min(1.0, FRICTION * dt);
         }
+    }
 
-        int bx = (int) Math.floor(x);
-        int by = (int) Math.floor(y - 1);
-        int bz = (int) Math.floor(z);
-        if (world.getBlock(bx, by, bz) != BlockType.AIR) {
-            if (vy <= 0 && y < by + 1) {
-                y = by + 1;
-                vy = 0;
-                onGround = true;
+    private double moveX(World world, double dx) {
+        if (dx > 0) {
+            int start = (int) Math.floor(x + HALF_WIDTH);
+            int end = (int) Math.floor(x + dx + HALF_WIDTH);
+            int minY = (int) Math.floor(y);
+            int maxY = (int) Math.floor(y + HEIGHT - 1e-9);
+            int minZ = (int) Math.floor(z - HALF_WIDTH);
+            int maxZ = (int) Math.floor(z + HALF_WIDTH - 1e-9);
+            for (int bx = start; bx <= end; bx++) {
+                for (int by = minY; by <= maxY; by++) {
+                    for (int bz = minZ; bz <= maxZ; bz++) {
+                        if (world.getBlock(bx, by, bz) != BlockType.AIR) {
+                            double allowed = bx - (x + HALF_WIDTH);
+                            if (allowed < dx) {
+                                dx = allowed;
+                            }
+                        }
+                    }
+                }
             }
-        } else {
-            onGround = false;
+        } else if (dx < 0) {
+            int start = (int) Math.floor(x + dx - HALF_WIDTH);
+            int end = (int) Math.floor(x - HALF_WIDTH);
+            int minY = (int) Math.floor(y);
+            int maxY = (int) Math.floor(y + HEIGHT - 1e-9);
+            int minZ = (int) Math.floor(z - HALF_WIDTH);
+            int maxZ = (int) Math.floor(z + HALF_WIDTH - 1e-9);
+            for (int bx = start; bx <= end; bx++) {
+                for (int by = minY; by <= maxY; by++) {
+                    for (int bz = minZ; bz <= maxZ; bz++) {
+                        if (world.getBlock(bx, by, bz) != BlockType.AIR) {
+                            double allowed = (bx + 1) - (x - HALF_WIDTH);
+                            if (allowed > dx) {
+                                dx = allowed;
+                            }
+                        }
+                    }
+                }
+            }
         }
+        x += dx;
+        return dx;
+    }
+
+    private double moveY(World world, double dy) {
+        double startDy = dy;
+        if (dy > 0) {
+            int start = (int) Math.floor(y + HEIGHT);
+            int end = (int) Math.floor(y + HEIGHT + dy);
+            int minX = (int) Math.floor(x - HALF_WIDTH);
+            int maxX = (int) Math.floor(x + HALF_WIDTH - 1e-9);
+            int minZ = (int) Math.floor(z - HALF_WIDTH);
+            int maxZ = (int) Math.floor(z + HALF_WIDTH - 1e-9);
+            for (int by = start; by <= end; by++) {
+                for (int bx = minX; bx <= maxX; bx++) {
+                    for (int bz = minZ; bz <= maxZ; bz++) {
+                        if (world.getBlock(bx, by, bz) != BlockType.AIR) {
+                            double allowed = by - (y + HEIGHT);
+                            if (allowed < dy) {
+                                dy = allowed;
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (dy < 0) {
+            int start = (int) Math.floor(y + dy);
+            int end = (int) Math.floor(y - 1e-9);
+            int minX = (int) Math.floor(x - HALF_WIDTH);
+            int maxX = (int) Math.floor(x + HALF_WIDTH - 1e-9);
+            int minZ = (int) Math.floor(z - HALF_WIDTH);
+            int maxZ = (int) Math.floor(z + HALF_WIDTH - 1e-9);
+            for (int by = start; by <= end; by++) {
+                for (int bx = minX; bx <= maxX; bx++) {
+                    for (int bz = minZ; bz <= maxZ; bz++) {
+                        if (world.getBlock(bx, by, bz) != BlockType.AIR) {
+                            double allowed = (by + 1) - y;
+                            if (allowed > dy) {
+                                dy = allowed;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        y += dy;
+        onGround = startDy < 0 && dy != startDy;
+        return dy;
+    }
+
+    private double moveZ(World world, double dz) {
+        if (dz > 0) {
+            int start = (int) Math.floor(z + HALF_WIDTH);
+            int end = (int) Math.floor(z + dz + HALF_WIDTH);
+            int minX = (int) Math.floor(x - HALF_WIDTH);
+            int maxX = (int) Math.floor(x + HALF_WIDTH - 1e-9);
+            int minY = (int) Math.floor(y);
+            int maxY = (int) Math.floor(y + HEIGHT - 1e-9);
+            for (int bz = start; bz <= end; bz++) {
+                for (int bx = minX; bx <= maxX; bx++) {
+                    for (int by = minY; by <= maxY; by++) {
+                        if (world.getBlock(bx, by, bz) != BlockType.AIR) {
+                            double allowed = bz - (z + HALF_WIDTH);
+                            if (allowed < dz) {
+                                dz = allowed;
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (dz < 0) {
+            int start = (int) Math.floor(z + dz - HALF_WIDTH);
+            int end = (int) Math.floor(z - HALF_WIDTH);
+            int minX = (int) Math.floor(x - HALF_WIDTH);
+            int maxX = (int) Math.floor(x + HALF_WIDTH - 1e-9);
+            int minY = (int) Math.floor(y);
+            int maxY = (int) Math.floor(y + HEIGHT - 1e-9);
+            for (int bz = start; bz <= end; bz++) {
+                for (int bx = minX; bx <= maxX; bx++) {
+                    for (int by = minY; by <= maxY; by++) {
+                        if (world.getBlock(bx, by, bz) != BlockType.AIR) {
+                            double allowed = (bz + 1) - (z - HALF_WIDTH);
+                            if (allowed > dz) {
+                                dz = allowed;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        z += dz;
+        return dz;
     }
 
     @Override
