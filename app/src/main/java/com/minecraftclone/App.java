@@ -71,7 +71,8 @@ public class App {
         int spawnX = spawnChunkX * Chunk.SIZE + Chunk.SIZE / 2;
         int spawnZ = spawnChunkZ * Chunk.SIZE + Chunk.SIZE / 2;
         int surfaceY = generator.findSurfaceY(world, spawnX, spawnZ);
-        Player player = new Player(spawnX, surfaceY + 1, spawnZ);
+        // Start the player slightly above the ground so they fall naturally
+        Player player = new Player(spawnX, surfaceY + 3, spawnZ);
         System.out.println("Player starting at " + player);
 
         // Launch the LWJGL-based renderer.
