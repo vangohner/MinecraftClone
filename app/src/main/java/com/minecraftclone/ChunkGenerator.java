@@ -220,5 +220,54 @@ public class ChunkGenerator {
         }
         return -1;
     }
+
+    /**
+     * Samples the raw density field used for terrain generation. Positive
+     * values indicate solid terrain while negative values represent empty
+     * space. This mirrors the density computation performed during chunk
+     * generation but omits any block-type assignment so it can be used by
+     * marching cubes meshing.
+     */
+    public double sampleDensity(int wx, int wy, int wz) {
+        double regionScale = (regionNoise.noise(wx * regionFrequency, wz * regionFrequency) + 1.0) / 2.0;
+
+        double contAmp = continentAmplitude * (0.3 + 0.7 * regionScale);
+        double mountAmp = mountainAmplitude * regionScale;
+        double detailAmp = detailAmplitude * (0.5 + 0.5 * regionScale);
+
+        double continent = continentNoise.noise(wx * continentFrequency, wz * continentFrequency) * contAmp;
+        double mountains = mountainNoise.noise(wx * mountainFrequency, wz * mountainFrequency) * mountAmp;
+        double surface = baseHeight + continent + mountains;
+
+        double displacement = detailNoise.noise(wx * detailFrequency, wy * detailFrequency, wz * detailFrequency)
+                * detailAmp;
+        double density = displacement + (surface - wy);
+
+        double monolith = monolithNoise.noise(wx * monolithFrequency, wz * monolithFrequency);
+        if (regionScale > 0.6 && monolith > monolithThreshold) {
+            density += (monolith - monolithThreshold) * monolithAmplitude * regionScale;
+        }
+
+        if (regionScale > 0.6 && wy > surface + islandBaseHeight) {
+            double island = islandNoise.noise(wx * islandFrequency, wy * islandFrequency, wz * islandFrequency)
+                    * islandAmplitude;
+            double islandDensity = island - (wy - (surface + islandBaseHeight));
+            if (islandDensity > density) {
+                density = islandDensity;
+            }
+        }
+
+        return density;
+    }
+
+    /** Returns the configured water level used for coloring. */
+    public int getWaterLevel() {
+        return waterLevel;
+    }
+
+    /** Returns the snow line altitude used for coloring. */
+    public int getSnowLine() {
+        return snowLine;
+    }
 }
 
